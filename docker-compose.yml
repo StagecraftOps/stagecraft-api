@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: agora-api-postgres
+    environment:
+      POSTGRES_DB: agora
+      POSTGRES_USER: agora
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localpassword}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agora"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: agora-api-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agora-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://agora:${POSTGRES_PASSWORD:-localpassword}@postgres:5432/agora
+      REDIS_URL: redis://redis:6379/0
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      SQS_QUEUE_URL: ${SQS_QUEUE_URL:-}
+      BEDROCK_MODEL_ID: anthropic.claude-3-5-sonnet-20241022-v2:0
+      SECRET_KEY: ${SECRET_KEY:-local-dev-secret-key-change-in-prod}
+      GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI:-http://localhost:3000/api/auth/callback}
+      FRONTEND_URL: http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - ./app:/app/app
+
+networks:
+  default:
+    name: agora-api-network

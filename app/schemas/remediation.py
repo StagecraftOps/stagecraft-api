@@ -1,0 +1,44 @@
+import uuid
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
+
+class RemediationBase(BaseModel):
+    org_login: str
+    repo_name: str
+    workflow_file: str
+    root_cause: str
+    bedrock_model: str
+    status: str
+
+
+class RemediationCreate(RemediationBase):
+    workflow_run_id: uuid.UUID
+    suggested_yaml: str | None = None
+
+
+class RemediationResponse(RemediationBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workflow_run_id: uuid.UUID
+    suggested_yaml: str | None = None
+    pr_url: str | None = None
+    pr_number: int | None = None
+    pr_branch: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RemediationDetail(RemediationResponse):
+    """Full detail — same as response but always includes suggested_yaml."""
+    pass
+
+
+class RemediationList(BaseModel):
+    remediations: list[RemediationResponse]
+    total: int
+    page: int
+    page_size: int

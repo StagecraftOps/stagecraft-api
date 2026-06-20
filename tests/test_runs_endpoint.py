@@ -60,7 +60,7 @@ class TestRunsFilter:
         import pathlib
 
         source = pathlib.Path(
-            "services/api-service/app/api/v1/routes/runs.py"
+            "app/api/v1/routes/runs.py"
         ).read_text()
         tree = ast.parse(source)
 
@@ -77,7 +77,7 @@ class TestRunsFilter:
         import pathlib, re
 
         source = pathlib.Path(
-            "services/api-service/app/api/v1/routes/runs.py"
+            "app/api/v1/routes/runs.py"
         ).read_text()
         assert "offset" in source, "offset query param must be present for pagination"
         assert ".offset(offset)" in source or "offset(offset)" in source

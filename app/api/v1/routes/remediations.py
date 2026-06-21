@@ -87,7 +87,7 @@ async def mark_helpful(
             org_login=remediation.org_login,
             repo_name=remediation.repo_name,
             workflow_file=remediation.workflow_file,
-            failure_category=getattr(remediation, "failure_category", "UNKNOWN") or "UNKNOWN",
+            failure_category=remediation.failure_category or "UNKNOWN",
             root_cause=remediation.root_cause,
             original_yaml="",          # original not stored on remediation; use empty string
             fixed_yaml=remediation.suggested_yaml,

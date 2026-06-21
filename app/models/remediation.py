@@ -21,6 +21,7 @@ class Remediation(Base):
     org_login: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     repo_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     workflow_file: Mapped[str] = mapped_column(String(512), nullable=False)
+    failure_category: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     root_cause: Mapped[str] = mapped_column(Text, nullable=False)
     fixed_yaml: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     suggested_yaml: Mapped[str | None] = mapped_column(Text, nullable=True)

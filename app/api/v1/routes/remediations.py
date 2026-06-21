@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.security import decrypt_token
 from app.db.base import get_db
+from app.models.fix_memory import FixMemory
 from app.models.remediation import Remediation
 from app.models.user import User
 from app.models.workflow_run import WorkflowRun
@@ -79,11 +80,30 @@ async def mark_helpful(
         )
 
     remediation.status = "helpful"
+
+    # --- Feature 1: ingest into fix_memories for future RAG retrieval ---
+    if remediation.suggested_yaml:
+        memory = FixMemory(
+            org_login=remediation.org_login,
+            repo_name=remediation.repo_name,
+            workflow_file=remediation.workflow_file,
+            failure_category=getattr(remediation, "failure_category", "UNKNOWN") or "UNKNOWN",
+            root_cause=remediation.root_cause,
+            original_yaml="",          # original not stored on remediation; use empty string
+            fixed_yaml=remediation.suggested_yaml,
+            remediation_id=remediation.id,
+        )
+        db.add(memory)
+        logger.info(
+            "Fix memory stored for remediation %s (category=%s)",
+            remediation_id, memory.failure_category,
+        )
+
     await db.commit()
     await db.refresh(remediation)
 
     logger.info(
-        "Remediation %s marked helpful — queuing for KB ingestion (org=%s, repo=%s)",
+        "Remediation %s marked helpful — fix memory ingested (org=%s, repo=%s)",
         remediation_id, remediation.org_login, remediation.repo_name,
     )
 
@@ -114,6 +134,47 @@ async def search_remediations(
         .limit(20)
     )
     return [RemediationResponse.model_validate(r) for r in result.scalars().all()]
+
+
+@router.get("/{remediation_id}/similar", response_model=list[RemediationResponse])
+async def get_similar_remediations(
+    remediation_id: uuid.UUID,
+    limit: int = Query(default=5, ge=1, le=20),
+    _user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[RemediationResponse]:
+    """
+    Feature 4 — Multi-Repo Correlation.
+    Return up to `limit` remediations from OTHER repos that share the same
+    failure_category and a similar root cause. Lets users see the same bug
+    across their org and optionally fix all repos with one action.
+    """
+    from sqlalchemy import or_
+    result = await db.execute(select(Remediation).where(Remediation.id == remediation_id))
+    source = result.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Remediation not found")
+
+    # Extract first 6 meaningful words from root_cause as search terms
+    words = [w for w in source.root_cause.split() if len(w) > 4][:6]
+    if not words:
+        return []
+
+    # Build OR ilike conditions on root_cause keywords
+    keyword_conditions = [Remediation.root_cause.ilike(f"%{w}%") for w in words]
+
+    similar_result = await db.execute(
+        select(Remediation)
+        .where(
+            Remediation.id != remediation_id,
+            Remediation.repo_name != source.repo_name,
+            or_(*keyword_conditions),
+            Remediation.status.in_(["analyzed", "pr_raised", "helpful"]),
+        )
+        .order_by(Remediation.created_at.desc())
+        .limit(limit)
+    )
+    return [RemediationResponse.model_validate(r) for r in similar_result.scalars().all()]
 
 
 @router.get("/{remediation_id}", response_model=RemediationDetail)

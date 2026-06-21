@@ -28,6 +28,8 @@ class RemediationResponse(RemediationBase):
     pr_number: int | None = None
     pr_branch: str | None = None
     error_message: str | None = None
+    confidence_score: int | None = None
+    confidence_reasoning: str | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -30,6 +30,8 @@ class Remediation(Base):
     bedrock_model: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(64), nullable=False, default="pending", index=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence_score: Mapped[int | None] = mapped_column(Integer, nullable=True)          # 0-100
+    confidence_reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

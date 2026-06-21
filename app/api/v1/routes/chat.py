@@ -1,0 +1,200 @@
+"""Natural Language Pipeline Chat — Feature 3.
+
+POST /api/v1/chat
+Accepts a plain-English question about the user's CI/CD data, converts it to
+safe read-only SQL via Bedrock, executes it against the database, and returns
+a conversational answer plus the raw data rows.
+"""
+import logging
+import re
+import time
+
+import boto3
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user
+from app.db.base import get_db
+from app.models.user import User
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+# ── Schema ────────────────────────────────────────────────────────────────────
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=3, max_length=500)
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    sql: str | None = None
+    data: list[dict] | None = None
+    error: str | None = None
+
+
+# ── DB Schema description passed to Bedrock ───────────────────────────────────
+
+_DB_SCHEMA = """
+PostgreSQL database tables (READ-ONLY access — SELECT only):
+
+TABLE: workflow_runs
+  id UUID PK, github_run_id BIGINT, org_login TEXT, repo_name TEXT,
+  workflow_name TEXT, workflow_file TEXT, branch TEXT, head_sha TEXT,
+  status TEXT, conclusion TEXT (values: success|failure|cancelled|skipped|null),
+  started_at TIMESTAMPTZ, completed_at TIMESTAMPTZ, html_url TEXT, created_at TIMESTAMPTZ
+
+TABLE: remediations
+  id UUID PK, workflow_run_id UUID FK→workflow_runs.id,
+  org_login TEXT, repo_name TEXT, workflow_file TEXT,
+  root_cause TEXT, suggested_yaml TEXT,
+  status TEXT (values: pending|analyzing|analyzed|pr_raised|helpful|failed),
+  pr_url TEXT, pr_number INT, pr_branch TEXT,
+  bedrock_model TEXT, error_message TEXT,
+  confidence_score INT (0-100, null if not yet scored),
+  confidence_reasoning TEXT,
+  created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
+
+TABLE: organizations
+  id UUID PK, github_org_id BIGINT, login TEXT, name TEXT,
+  sync_status TEXT, created_at TIMESTAMPTZ
+
+TABLE: users
+  id UUID PK, github_id BIGINT, login TEXT, name TEXT, created_at TIMESTAMPTZ
+"""
+
+_SYSTEM_PROMPT = f"""You are an AI assistant for aGorA, a CI/CD remediation platform.
+The user will ask questions about their GitHub Actions workflow data.
+You convert questions into PostgreSQL SELECT queries and explain the results.
+
+DATABASE SCHEMA:
+{_DB_SCHEMA}
+
+RULES:
+1. Output ONLY a JSON object: {{"sql": "<SELECT query>", "explanation": "<what query does>"}}
+2. ONLY use SELECT. Never INSERT, UPDATE, DELETE, DROP, or any DDL.
+3. If the question cannot be answered with SQL (e.g. it's a greeting), output:
+   {{"sql": null, "explanation": "<direct answer>"}}
+4. Limit results to 50 rows unless the user specifies otherwise.
+5. Use ILIKE for case-insensitive text matching.
+6. Timestamps are UTC. Use NOW() - INTERVAL '7 days' for "last week" etc.
+"""
+
+
+# ── Bedrock helper ────────────────────────────────────────────────────────────
+
+def _call_bedrock_for_sql(question: str, model_id: str, client) -> tuple[str | None, str]:
+    """Ask Bedrock to convert a question to SQL. Returns (sql, explanation)."""
+    messages = [{"role": "user", "content": [{"text": question}]}]
+    for attempt in range(3):
+        try:
+            response = client.converse(
+                modelId=model_id,
+                system=[{"text": _SYSTEM_PROMPT}],
+                messages=messages,
+                inferenceConfig={"maxTokens": 512},
+            )
+            raw: str = response["output"]["message"]["content"][0]["text"].strip()
+            if raw.startswith("```"):
+                raw = "\n".join(l for l in raw.splitlines() if not l.startswith("```")).strip()
+            import json
+            parsed = json.loads(raw)
+            return parsed.get("sql"), parsed.get("explanation", "")
+        except client.exceptions.ThrottlingException:
+            if attempt < 2:
+                time.sleep(2 ** (attempt + 1))
+            else:
+                raise
+        except Exception as exc:
+            logger.warning("Bedrock chat SQL generation failed: %s | raw=%r", exc, locals().get("raw", ""))
+            return None, "I couldn't generate a query for that question."
+    return None, "Service unavailable."
+
+
+def _is_safe_sql(sql: str) -> bool:
+    """Reject any SQL that isn't a plain SELECT."""
+    normalized = re.sub(r"\s+", " ", sql.strip().upper())
+    # Must start with SELECT and must not contain any write keywords
+    if not normalized.startswith("SELECT"):
+        return False
+    forbidden = ["INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER",
+                 "TRUNCATE", "GRANT", "REVOKE", "EXECUTE", "CALL"]
+    return not any(kw in normalized for kw in forbidden)
+
+
+# ── Route ─────────────────────────────────────────────────────────────────────
+
+@router.post("/", response_model=ChatResponse)
+async def chat(
+    req: ChatRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ChatResponse:
+    """
+    Natural Language Pipeline Chat.
+
+    Convert a plain-English question about CI/CD data into SQL via Bedrock,
+    execute it safely, and return a human-readable answer with the raw rows.
+    """
+    from app.services.bedrock_client import BedrockRemediationClient, _bedrock_boto3_kwargs
+    from app.core.config import settings
+
+    bedrock_client = boto3.client(
+        "bedrock-runtime",
+        region_name=settings.AWS_REGION,
+        **_bedrock_boto3_kwargs(),
+    )
+    model_id = settings.BEDROCK_MODEL_ID
+
+    sql, explanation = _call_bedrock_for_sql(req.message, model_id, bedrock_client)
+
+    # No SQL needed — just a direct explanation (greetings, meta questions)
+    if not sql:
+        return ChatResponse(answer=explanation, sql=None, data=None)
+
+    if not _is_safe_sql(sql):
+        logger.warning("Bedrock generated unsafe SQL for user %s: %r", user.id, sql)
+        return ChatResponse(
+            answer="I can only run read-only queries against your pipeline data.",
+            sql=None, data=None,
+            error="Generated SQL was not a safe SELECT statement.",
+        )
+
+    try:
+        result = await db.execute(text(sql))
+        rows = [dict(row._mapping) for row in result.fetchmany(50)]
+
+        # Ask Bedrock to summarize the results in plain English
+        summary_prompt = (
+            f"Question: {req.message}\n"
+            f"SQL: {sql}\n"
+            f"Results ({len(rows)} rows): {str(rows[:10])}\n\n"
+            "Summarize the results in 1-3 plain English sentences."
+        )
+        summary_response = bedrock_client.converse(
+            modelId=model_id,
+            messages=[{"role": "user", "content": [{"text": summary_prompt}]}],
+            inferenceConfig={"maxTokens": 256},
+        )
+        answer = summary_response["output"]["message"]["content"][0]["text"].strip()
+
+        # Serialize rows — convert UUIDs/datetimes to strings
+        serializable_rows = []
+        for row in rows:
+            serializable_rows.append({
+                k: str(v) if not isinstance(v, (int, float, bool, type(None), str)) else v
+                for k, v in row.items()
+            })
+
+        return ChatResponse(answer=answer, sql=sql, data=serializable_rows)
+
+    except Exception as exc:
+        logger.warning("Chat SQL execution failed: %s | sql=%r", exc, sql)
+        return ChatResponse(
+            answer="I ran into an error executing that query.",
+            sql=sql,
+            data=None,
+            error=str(exc),
+        )

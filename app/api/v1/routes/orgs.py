@@ -66,7 +66,9 @@ async def connect_org(
                 detail="Organization already connected",
             )
 
-        webhook_secret = secrets.token_hex(32)
+        # Use the global webhook secret so the webhook service can verify signatures.
+        # All orgs share one secret — simpler and consistent with the webhook service config.
+        webhook_secret = settings.GITHUB_WEBHOOK_SECRET
         try:
             webhook_data = await github.create_webhook(body.login, webhook_secret, WEBHOOK_URL)
             webhook_id = webhook_data.get("id")

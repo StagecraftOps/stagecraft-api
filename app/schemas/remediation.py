@@ -8,6 +8,7 @@ class RemediationBase(BaseModel):
     org_login: str
     repo_name: str
     workflow_file: str
+    failure_category: str | None = None
     root_cause: str
     bedrock_model: str
     status: str

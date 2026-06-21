@@ -11,6 +11,7 @@ from app.db.base import get_db
 from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.organization import OrganizationCreate, OrganizationList, OrganizationResponse
+from app.core.config import settings
 from app.services.github import GitHubService
 from app.services.sqs_publisher import SQSPublisher
 
@@ -18,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-WEBHOOK_URL = "http://webhook-service:8001/webhooks/github"
+# Public webhook URL that GitHub can reach — must be the internet-facing URL
+WEBHOOK_URL = f"{settings.FRONTEND_URL}/webhooks/github"
 
 _publisher = SQSPublisher()
 

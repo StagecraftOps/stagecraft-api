@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from typing import Any
 
@@ -179,13 +180,26 @@ class GitHubService:
         message: str,
         current_sha: str | None,
     ) -> None:
-        """Create or update a workflow file with the suggested YAML fix."""
+        """Create or update a workflow file with the suggested YAML fix.
+
+        Retries on 404: the Contents API can briefly lag behind a branch just
+        created/force-updated via the Git Data API (create_fix_branch runs
+        immediately before this), so an immediate PUT sometimes 404s before
+        GitHub's internal state catches up.
+        """
         encoded = base64.b64encode(content.encode()).decode()
         payload: dict = {"message": message, "content": encoded, "branch": branch}
         if current_sha:
             payload["sha"] = current_sha
-        response = await self._client.put(f"/repos/{owner}/{repo}/contents/{path}", json=payload)
-        response.raise_for_status()
+
+        delays = [0.5, 1.0, 2.0]
+        for attempt, delay in enumerate([0.0, *delays]):
+            if delay:
+                await asyncio.sleep(delay)
+            response = await self._client.put(f"/repos/{owner}/{repo}/contents/{path}", json=payload)
+            if response.status_code != 404 or attempt == len(delays):
+                response.raise_for_status()
+                return
 
     async def create_pr(
         self, owner: str, repo: str, head: str, base: str, title: str, body: str

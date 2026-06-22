@@ -99,3 +99,128 @@ class TestOrganizationModelSyncStatus:
         assert hasattr(Organization, "sync_status"), (
             "Organization.sync_status column must exist to track backfill progress"
         )
+
+
+def _make_user(user_id: uuid.UUID | None = None) -> MagicMock:
+    user = MagicMock()
+    user.id = user_id or uuid.uuid4()
+    user.access_token_encrypted = "encrypted-token"
+    return user
+
+
+def _scalars_result(rows: list) -> MagicMock:
+    """Mimics db.execute(...) returning a Result whose .scalars().all() gives rows."""
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = rows
+    return result
+
+
+def _scalar_one_result(value) -> MagicMock:
+    result = MagicMock()
+    result.scalar_one.return_value = value
+    return result
+
+
+def _scalar_one_or_none_result(value) -> MagicMock:
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = value
+    return result
+
+
+class TestRunsDataIsolation:
+    """Regression tests for the cross-tenant data leak: any authenticated user
+    could list/view/fetch-logs for ANY org's workflow runs, not just their own
+    connected organizations. _user was resolved but never used to filter."""
+
+    async def test_list_recent_runs_empty_when_user_owns_no_orgs(self):
+        from app.api.v1.routes.runs import list_recent_runs
+
+        db = AsyncMock()
+        db.execute.return_value = _scalars_result([])  # owned_org_logins -> []
+
+        result = await list_recent_runs(
+            org_login=None, repo_name=None, run_status=None, conclusion=None,
+            limit=20, offset=0, user=_make_user(), db=db,
+        )
+        assert result.total == 0
+        assert result.runs == []
+        # Must short-circuit before ever querying workflow_runs.
+        assert db.execute.call_count == 1
+
+    async def test_list_recent_runs_rejects_unowned_org_login(self):
+        from app.api.v1.routes.runs import list_recent_runs
+        from fastapi import HTTPException
+
+        db = AsyncMock()
+        db.execute.return_value = _scalars_result(["acme"])  # user only owns "acme"
+
+        with pytest.raises(HTTPException) as exc_info:
+            await list_recent_runs(
+                org_login="someone-elses-org", repo_name=None, run_status=None,
+                conclusion=None, limit=20, offset=0, user=_make_user(), db=db,
+            )
+        assert exc_info.value.status_code == 404
+
+    async def test_list_recent_runs_scopes_query_to_owned_logins(self):
+        from app.api.v1.routes.runs import list_recent_runs
+
+        run = _make_run(org_login="acme")
+        db = AsyncMock()
+        db.execute.side_effect = [
+            _scalars_result(["acme"]),       # owned_org_logins
+            _scalar_one_result(1),           # count_query
+            _scalars_result([run]),          # query
+        ]
+
+        result = await list_recent_runs(
+            org_login=None, repo_name=None, run_status=None, conclusion=None,
+            limit=20, offset=0, user=_make_user(), db=db,
+        )
+        assert result.total == 1
+        assert len(result.runs) == 1
+
+    async def test_get_run_hides_run_from_other_users_org(self):
+        """The exact bug: a run belonging to an org the current user never
+        connected must 404, not be returned."""
+        from app.api.v1.routes.runs import get_run
+        from fastapi import HTTPException
+
+        other_users_run = _make_run(org_login="someone-elses-org")
+        db = AsyncMock()
+        db.execute.side_effect = [
+            _scalars_result(["acme"]),  # current user only owns "acme"
+            _scalar_one_or_none_result(other_users_run),
+        ]
+
+        with pytest.raises(HTTPException) as exc_info:
+            await get_run(run_id=other_users_run.id, user=_make_user(), db=db)
+        assert exc_info.value.status_code == 404
+
+    async def test_get_run_allows_run_from_owned_org(self):
+        from app.api.v1.routes.runs import get_run
+
+        own_run = _make_run(org_login="acme")
+        db = AsyncMock()
+        db.execute.side_effect = [
+            _scalars_result(["acme"]),
+            _scalar_one_or_none_result(own_run),
+        ]
+
+        response = await get_run(run_id=own_run.id, user=_make_user(), db=db)
+        assert response["org_login"] == "acme"
+
+    async def test_get_run_logs_hides_run_from_other_users_org(self):
+        from app.api.v1.routes.runs import get_run_logs
+        from fastapi import HTTPException
+
+        other_users_run = _make_run(org_login="someone-elses-org")
+        db = AsyncMock()
+        db.execute.side_effect = [
+            _scalars_result(["acme"]),
+            _scalar_one_or_none_result(other_users_run),
+        ]
+
+        with pytest.raises(HTTPException) as exc_info:
+            with patch("app.core.security.decrypt_token", return_value="tok"):
+                await get_run_logs(run_id=other_users_run.id, user=_make_user(), db=db)
+        assert exc_info.value.status_code == 404

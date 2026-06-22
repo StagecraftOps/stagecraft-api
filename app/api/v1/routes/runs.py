@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.security import decrypt_token
 from app.db.base import get_db
+from app.models.organization import Organization
 from app.models.user import User
 from app.models.workflow_run import WorkflowRun
 from app.schemas.workflow import WorkflowRunList, WorkflowRunResponse
@@ -18,6 +19,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _owned_org_logins(db: AsyncSession, user_id: object) -> list[str]:
+    """Org logins the current user has connected — the only ones they may see runs for."""
+    result = await db.execute(
+        select(Organization.login).where(Organization.owner_id == user_id)
+    )
+    return list(result.scalars().all())
+
+
 @router.get("/", response_model=WorkflowRunList)
 async def list_recent_runs(
     org_login: str | None = Query(default=None, max_length=255),
@@ -26,12 +35,25 @@ async def list_recent_runs(
     conclusion: str | None = Query(default=None, max_length=64),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowRunList:
-    """List persisted workflow runs with optional filters and pagination."""
-    query = select(WorkflowRun)
-    count_query = select(func.count()).select_from(WorkflowRun)
+    """List persisted workflow runs with optional filters and pagination.
+
+    Always scoped to organizations the current user has connected — runs
+    belonging to other users' orgs must never be returned here.
+    """
+    owned_logins = await _owned_org_logins(db, user.id)
+    if not owned_logins:
+        return WorkflowRunList(runs=[], total=0)
+
+    if org_login and org_login not in owned_logins:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+
+    query = select(WorkflowRun).where(WorkflowRun.org_login.in_(owned_logins))
+    count_query = select(func.count()).select_from(WorkflowRun).where(
+        WorkflowRun.org_login.in_(owned_logins)
+    )
 
     if org_login:
         query = query.where(WorkflowRun.org_login == org_login)
@@ -60,13 +82,15 @@ async def list_recent_runs(
 @router.get("/{run_id}")
 async def get_run(
     run_id: uuid.UUID,
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Get a workflow run by its database UUID."""
+    """Get a workflow run by its database UUID — only if it belongs to one of the
+    current user's connected organizations."""
+    owned_logins = await _owned_org_logins(db, user.id)
     result = await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
     db_run = result.scalar_one_or_none()
-    if not db_run:
+    if not db_run or db_run.org_login not in owned_logins:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
     return WorkflowRunResponse.model_validate(db_run).model_dump()
 
@@ -77,12 +101,14 @@ async def get_run_logs(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Return the scrubbed log text for a workflow run (fetched live from GitHub)."""
+    """Return the scrubbed log text for a workflow run (fetched live from GitHub) —
+    only if it belongs to one of the current user's connected organizations."""
     from app.core.scrubber import scrub
 
+    owned_logins = await _owned_org_logins(db, user.id)
     result = await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
     db_run = result.scalar_one_or_none()
-    if not db_run:
+    if not db_run or db_run.org_login not in owned_logins:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
     github = GitHubService(decrypt_token(user.access_token_encrypted))

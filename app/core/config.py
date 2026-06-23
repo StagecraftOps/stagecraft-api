@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     GITHUB_APP_ID: str = ""
     GITHUB_APP_PRIVATE_KEY: str = ""
 
+    # Shared secret checked on /internal/* routes — these are reachable only
+    # from inside the cluster (ClusterIP), but the header still distinguishes
+    # a legitimate agora-mcp-github call from any other in-cluster pod.
+    INTERNAL_API_KEY: str = ""
+
+    # Investigator Agent's entry point (agora-worker's health server, see
+    # agora-worker/app/core/health.py) — called synchronously from chat.py.
+    WORKER_INTERNAL_URL: str = "http://agora-worker-agora-worker.agora.svc.cluster.local:8080"
+
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT.lower() in {"prod", "production"}

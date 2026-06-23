@@ -31,6 +31,11 @@ class RemediationResponse(RemediationBase):
     error_message: str | None = None
     confidence_score: int | None = None
     confidence_reasoning: str | None = None
+    security_risk_score: int | None = None
+    security_findings: list[str] | None = None
+    pr_title: str | None = None
+    pr_description: str | None = None
+    agent_trace: list[str] | None = None
     created_at: datetime
     updated_at: datetime
 

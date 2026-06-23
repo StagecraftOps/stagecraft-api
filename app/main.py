@@ -22,6 +22,7 @@ from sqlalchemy import text
 
 from app.api.events import redis_event_listener
 from app.api.v1.router import api_router
+from app.api.v1.routes.internal import router as internal_router
 from app.api.v1.routes.websocket import router as ws_router
 from app.core.config import INSECURE_DEFAULT_SECRET, settings
 from app.core.limiter import limiter
@@ -91,6 +92,10 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api/v1")
 
 app.include_router(ws_router)
+
+# Service-to-service only (verify_internal_request gates every route here) —
+# not part of the public API surface, no /docs entry, no CORS exposure.
+app.include_router(internal_router, prefix="/internal", tags=["internal"])
 
 @app.get("/health", tags=["health"])
 async def health_check() -> dict:

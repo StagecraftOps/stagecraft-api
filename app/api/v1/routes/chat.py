@@ -1,16 +1,18 @@
-"""Pipeline Chat — RAG over past pipeline failures.
+"""Pipeline Chat — count answers from SQL, everything else from the Investigator Agent.
 
 POST /api/v1/chat
-Embeds the user's question (Titan), retrieves the most semantically similar
-remediation context from log_embeddings (pgvector cosine search), and has Nova
-synthesize an answer grounded in that retrieved context. No SQL generation —
-answers come from the indexed corpus of real failures + fixes.
+A cheap Nova call first classifies the question as `count` (a literal
+counting/ranking question over workflow_runs) or `investigate` (anything
+else). `count` answers directly from a SQL GROUP BY. `investigate` hands off
+to agora-worker's Investigator Agent (app/agents/investigator.py there) — a
+bounded tool-calling loop that searches remediation history and reasons
+across multiple past runs, replacing the previous single-shot
+embed-then-synthesize RAG call.
 """
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 
-import boto3
+import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -38,54 +40,34 @@ class ChatResponse(BaseModel):
     error: str | None = None
 
 
-_TOP_K = 6
+_INTENT_PROMPT = """Classify the question below into exactly one category:
 
-_ANSWER_PROMPT = """You are aGorA's CI/CD assistant. Answer the user's question using ONLY the \
-CONTEXT below — it contains real past pipeline failures from their repositories, each with the \
-root cause and the fix that was suggested. Be specific: reference repositories and failure \
-categories when relevant. If the context does not contain enough to answer, say so plainly \
-instead of guessing.
-
-CONTEXT:
-{context}
+COUNT - a literal counting/ranking question over workflow run history, e.g. \
+"how many failures yesterday", "which repo has the most failures", "show failure trends".
+INVESTIGATE - anything else: root causes, "why" questions, comparisons, what kind of issues, \
+recurring patterns, or anything needing more than a single number.
 
 QUESTION: {question}
 
-Answer in 1-4 sentences:"""
+Respond with exactly one word: COUNT or INVESTIGATE"""
 
 
-def _synthesize(question: str, context: str, model_id: str, client) -> str:
-    resp = client.converse(
-        modelId=model_id,
-        messages=[{"role": "user", "content": [{"text": _ANSWER_PROMPT.format(context=context, question=question)}]}],
-        inferenceConfig={"maxTokens": 512, "temperature": 0},
-    )
-    return resp["output"]["message"]["content"][0]["text"].strip()
-
-
-def _looks_like_aggregate_question(message: str) -> bool:
-    """True only for literal counting/ranking questions over workflow_runs.
-
-    Narrowly scoped on purpose: earlier patterns like bare `\\bmost\\b` or
-    `\\bwhich repo\\b` matched qualitative questions ("what kinds of issues
-    affect agora-api") just because they shared a word with a ranking
-    question, routing them to a context-free COUNT(*) table instead of RAG.
-    Every pattern here requires a counting/ranking verb phrase, not just an
-    adjacent noun, so "what kind of issues" no longer collides with "which
-    repo has the most issues".
-    """
-    text = message.lower()
-    patterns = [
-        r"\bhow many\b",
-        r"\b(number|count) of\b",
-        r"\b(most|highest|highest number of|top)\b.{0,20}\b(failures?|errors?|issues?|runs?)\b",
-        r"\bwhich repo(s)?\b.{0,20}\b(most|highest|top)\b",
-        r"\bwhat repo(s)?\b.{0,20}\b(most|highest|top)\b",
-        r"\btrend\b",
-        r"\b(failures?|errors?|issues?)\b.{0,20}\byesterday\b",
-        r"\blast (day|week|month|7 days|30 days)\b",
-    ]
-    return any(re.search(p, text) for p in patterns)
+async def _classify_intent(message: str, model_id: str, client) -> str:
+    """Nova-based intent check. Defaults to INVESTIGATE on any failure — the
+    investigator path degrades gracefully (worst case, an unnecessary search),
+    while wrongly routing a real question to the count path returns nothing
+    useful at all."""
+    try:
+        resp = client.converse(
+            modelId=model_id,
+            messages=[{"role": "user", "content": [{"text": _INTENT_PROMPT.format(question=message)}]}],
+            inferenceConfig={"maxTokens": 16, "temperature": 0},
+        )
+        raw = resp["output"]["message"]["content"][0]["text"].strip().upper()
+        return "COUNT" if "COUNT" in raw else "INVESTIGATE"
+    except Exception as exc:
+        logger.warning("Intent classification failed, defaulting to INVESTIGATE: %s", exc)
+        return "INVESTIGATE"
 
 
 async def _answer_with_analytics(db: AsyncSession, message: str) -> ChatResponse:
@@ -146,86 +128,54 @@ async def _answer_with_analytics(db: AsyncSession, message: str) -> ChatResponse
     return ChatResponse(answer=answer, data=sources)
 
 
+async def _answer_with_investigator(message: str) -> ChatResponse:
+    """Hand off to agora-worker's Investigator Agent (synchronous HTTP call,
+    not Celery — chat needs a request/response cycle here, not async dispatch)."""
+    from app.core.config import settings
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{settings.WORKER_INTERNAL_URL}/internal/investigate",
+                json={"question": message},
+                headers={"X-Internal-Api-Key": settings.INTERNAL_API_KEY},
+            )
+            resp.raise_for_status()
+            result = resp.json()
+    except Exception as exc:
+        logger.warning("Investigator call failed: %s", exc)
+        return ChatResponse(
+            answer="I couldn't investigate that question right now. Please try again.",
+            error=str(exc),
+        )
+
+    sources = [
+        {"repo": "—", "category": tc["tool"], "relevance": 1.0 if tc["ok"] else 0.0, "summary": str(tc["input"])}
+        for tc in result.get("tool_calls", [])
+    ]
+    return ChatResponse(answer=result.get("answer", ""), data=sources)
+
+
 @router.post("/", response_model=ChatResponse)
 async def chat(
     req: ChatRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ChatResponse:
-    """Answer a question via retrieval-augmented generation over past failures."""
+    """Classify the question, then answer via SQL count or the Investigator Agent."""
+    import boto3
+
     from app.core.config import settings
     from app.services.bedrock_client import _bedrock_boto3_kwargs
-    from app.services.embeddings import embed_text, to_pgvector
 
-    if _looks_like_aggregate_question(req.message):
-        return await _answer_with_analytics(db, req.message)
-
-    # 1. Embed the question.
-    try:
-        qvec = to_pgvector(embed_text(req.message))
-    except Exception as exc:
-        logger.warning("Chat embedding failed for user %s: %s", user.id, exc)
-        return ChatResponse(
-            answer="I couldn't process that question right now. Please try again.",
-            error=str(exc),
-        )
-
-    # 2. Retrieve the top-k most similar chunks (cosine distance via pgvector).
-    rows = (
-        await db.execute(
-            text(
-                """
-                SELECT repo_name, failure_category, chunk_text,
-                       1 - (embedding <=> CAST(:qvec AS vector)) AS score
-                FROM log_embeddings
-                ORDER BY embedding <=> CAST(:qvec AS vector)
-                LIMIT :k
-                """
-            ),
-            {"qvec": qvec, "k": _TOP_K},
-        )
-    ).fetchall()
-
-    if not rows:
-        return ChatResponse(
-            answer=(
-                "I don't have any indexed pipeline data yet. Once some failures have been "
-                "analyzed, I'll be able to answer questions about them."
-            ),
-            data=[],
-        )
-
-    context = "\n\n---\n\n".join(r.chunk_text for r in rows)
-    sources = [
-        {
-            "repo": r.repo_name or "—",
-            "category": r.failure_category or "—",
-            "relevance": round(float(r.score), 3),
-            "summary": (r.chunk_text or "").replace("\n", " ")[:120],
-        }
-        for r in rows
-    ]
-
-    # 3. Synthesize a grounded answer.
     client = boto3.client(
         "bedrock-runtime",
         region_name=settings.AWS_REGION,
         **_bedrock_boto3_kwargs(),
     )
-    try:
-        answer = _synthesize(req.message, context, settings.BEDROCK_CHAT_MODEL_ID, client)
-    except client.exceptions.ThrottlingException:
-        logger.warning("Bedrock throttled chat synthesis for user %s", user.id)
-        return ChatResponse(
-            answer=(
-                "The AI service is rate-limited right now. Here are the most relevant items "
-                "I found — try again shortly for a written summary."
-            ),
-            data=sources,
-            error="Bedrock throttling.",
-        )
-    except Exception as exc:
-        logger.warning("Chat synthesis failed for user %s: %s", user.id, exc)
-        answer = f"I found {len(rows)} related items but couldn't generate a summary right now."
+    intent = await _classify_intent(req.message, settings.BEDROCK_CHAT_MODEL_ID, client)
 
-    return ChatResponse(answer=answer, data=sources)
+    if intent == "COUNT":
+        return await _answer_with_analytics(db, req.message)
+
+    return await _answer_with_investigator(req.message)

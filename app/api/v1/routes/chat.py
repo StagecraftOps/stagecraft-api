@@ -64,17 +64,26 @@ def _synthesize(question: str, context: str, model_id: str, client) -> str:
 
 
 def _looks_like_aggregate_question(message: str) -> bool:
+    """True only for literal counting/ranking questions over workflow_runs.
+
+    Narrowly scoped on purpose: earlier patterns like bare `\\bmost\\b` or
+    `\\bwhich repo\\b` matched qualitative questions ("what kinds of issues
+    affect agora-api") just because they shared a word with a ranking
+    question, routing them to a context-free COUNT(*) table instead of RAG.
+    Every pattern here requires a counting/ranking verb phrase, not just an
+    adjacent noun, so "what kind of issues" no longer collides with "which
+    repo has the most issues".
+    """
     text = message.lower()
     patterns = [
-        r"\bmost\b",
-        r"\btop\b",
         r"\bhow many\b",
-        r"\bcount\b",
+        r"\b(number|count) of\b",
+        r"\b(most|highest|highest number of|top)\b.{0,20}\b(failures?|errors?|issues?|runs?)\b",
+        r"\bwhich repo(s)?\b.{0,20}\b(most|highest|top)\b",
+        r"\bwhat repo(s)?\b.{0,20}\b(most|highest|top)\b",
         r"\btrend\b",
-        r"\byesterday\b",
+        r"\b(failures?|errors?|issues?)\b.{0,20}\byesterday\b",
         r"\blast (day|week|month|7 days|30 days)\b",
-        r"\bwhich repo\b",
-        r"\bwhat repo\b",
     ]
     return any(re.search(p, text) for p in patterns)
 

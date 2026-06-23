@@ -1,3 +1,4 @@
+import logging
 import secrets
 from urllib.parse import urlencode
 
@@ -10,15 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import AUTH_COOKIE_NAME, get_current_user
 from app.core.config import settings
 from app.core.limiter import limiter
-from app.core.security import create_access_token, encrypt_token
+from app.core.security import create_access_token, decrypt_token, encrypt_token
 from app.db.base import get_db
 from app.models.user import User
 from app.schemas.user import UserMe
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
+GITHUB_API_URL = "https://api.github.com"
 
 @router.get("/github")
 @limiter.limit("10/minute")
@@ -31,7 +34,11 @@ async def github_login(request: Request) -> RedirectResponse:
         # workflow scope is required to create/update files under .github/workflows/ —
         # without it GitHub 404s the Contents API write (masked, like private-repo access)
         # even though repo grants write everywhere else.
-        "scope": "repo,workflow,admin:org_hook,read:org",
+        # user:email — GitHub only returns a user's email on GET /user when
+        # it's public or the token has this scope; without it, email-based
+        # features (fix-notification emails) silently get a null email for
+        # any user with a private GitHub email.
+        "scope": "repo,workflow,admin:org_hook,read:org,user:email",
         "state": state,
     }
     url = f"{GITHUB_AUTH_URL}?{urlencode(params)}"
@@ -141,7 +148,33 @@ async def get_me(user: User = Depends(get_current_user)) -> UserMe:
     return UserMe.model_validate(user)
 
 @router.post("/logout")
-async def logout(response: Response) -> dict:
-    """Clear the JWT cookie to log the user out."""
-    response.delete_cookie(AUTH_COOKIE_NAME, httponly=True, samesite="lax")
+async def logout(response: Response, user: User = Depends(get_current_user)) -> dict:
+    """Revoke the user's GitHub access token, then clear the local session cookie.
+
+    Revocation is best-effort: if GitHub's API is unreachable or rejects the
+    call, the user is still logged out locally — a failed revoke must never
+    leave someone unable to log out. Without this, logout only ever cleared
+    the session cookie; the underlying GitHub token stayed valid until the
+    user manually revoked it via github.com/settings/applications.
+    """
+    try:
+        access_token = decrypt_token(user.access_token_encrypted)
+        async with httpx.AsyncClient() as client:
+            resp = await client.request(
+                "DELETE",
+                f"{GITHUB_API_URL}/applications/{settings.GITHUB_CLIENT_ID}/token",
+                auth=(settings.GITHUB_CLIENT_ID, settings.GITHUB_CLIENT_SECRET),
+                json={"access_token": access_token},
+                headers={"Accept": "application/vnd.github+json"},
+            )
+            if resp.status_code not in (204, 404):
+                logger.warning(
+                    "GitHub token revocation returned unexpected status %s for user %s",
+                    resp.status_code,
+                    user.id,
+                )
+    except Exception as exc:
+        logger.warning("GitHub token revocation failed for user %s: %s", user.id, exc)
+
+    response.delete_cookie(AUTH_COOKIE_NAME, httponly=True, samesite="lax", secure=settings.cookie_secure)
     return {"message": "Logged out successfully"}

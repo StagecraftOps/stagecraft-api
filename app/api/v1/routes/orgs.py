@@ -25,13 +25,11 @@ GITHUB_APP_INSTALL_URL = "https://github.com/apps/agora-ops/installations/new"
 
 @router.get("/", response_model=OrganizationList)
 async def list_orgs(
-    user: User = Depends(get_current_user),
+    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> OrganizationList:
-    """List all organizations connected by the current user."""
-    result = await db.execute(
-        select(Organization).where(Organization.owner_id == user.id)
-    )
+    """List all connected organizations (platform-wide view)."""
+    result = await db.execute(select(Organization))
     orgs = result.scalars().all()
     return OrganizationList(
         organizations=[OrganizationResponse.model_validate(o) for o in orgs],

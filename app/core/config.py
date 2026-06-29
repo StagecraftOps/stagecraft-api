@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # role directly (same account). Mirrors the worker's setting.
     BEDROCK_CROSS_ACCOUNT_ROLE_ARN: str = ""
 
+    # Long-lived Bedrock API key (ABSK… format). When set, overrides IAM/role
+    # auth — injected as a Bearer token on every Bedrock call.
+    BEDROCK_API_KEY: str = ""
+
     ENVIRONMENT: str = "development"
 
     SECRET_KEY: str = INSECURE_DEFAULT_SECRET

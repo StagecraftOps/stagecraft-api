@@ -51,7 +51,6 @@ async def github_login(request: Request) -> RedirectResponse:
         secure=settings.cookie_secure,
         max_age=600,
     )
-    logger.info("OAuth login: setting oauth_state=%s secure=%s redirect_uri=%s", state, settings.cookie_secure, settings.GITHUB_REDIRECT_URI)
     return response
 
 @router.get("/callback")
@@ -65,7 +64,6 @@ async def github_callback(
     oauth_state: str | None = Cookie(default=None),
 ) -> RedirectResponse:
     """Exchange OAuth code for an access token, upsert user, and set JWT cookie."""
-    logger.info("OAuth callback: state=%s oauth_state_cookie=%s cookies=%s", state, oauth_state, dict(request.cookies))
     if not oauth_state or oauth_state != state:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OAuth state")
 

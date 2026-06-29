@@ -19,11 +19,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _owned_org_logins(db: AsyncSession, user_id: object) -> list[str]:
-    """Org logins the current user has connected — the only ones they may see runs for."""
-    result = await db.execute(
-        select(Organization.login).where(Organization.owner_id == user_id)
-    )
+async def _visible_org_logins(db: AsyncSession) -> list[str]:
+    """All connected org logins — runs are platform-wide, not per-user."""
+    result = await db.execute(select(Organization.login))
     return list(result.scalars().all())
 
 
@@ -43,16 +41,16 @@ async def list_recent_runs(
     Always scoped to organizations the current user has connected — runs
     belonging to other users' orgs must never be returned here.
     """
-    owned_logins = await _owned_org_logins(db, user.id)
-    if not owned_logins:
+    visible_logins = await _visible_org_logins(db)
+    if not visible_logins:
         return WorkflowRunList(runs=[], total=0)
 
-    if org_login and org_login not in owned_logins:
+    if org_login and org_login not in visible_logins:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
-    query = select(WorkflowRun).where(WorkflowRun.org_login.in_(owned_logins))
+    query = select(WorkflowRun).where(WorkflowRun.org_login.in_(visible_logins))
     count_query = select(func.count()).select_from(WorkflowRun).where(
-        WorkflowRun.org_login.in_(owned_logins)
+        WorkflowRun.org_login.in_(visible_logins)
     )
 
     if org_login:
@@ -79,18 +77,28 @@ async def list_recent_runs(
     )
 
 
+async def _get_org_owner_token(db: AsyncSession, org_login: str) -> str:
+    """Return the encrypted GitHub token of the user who connected this org."""
+    result = await db.execute(
+        select(User).join(Organization, Organization.owner_id == User.id)
+        .where(Organization.login == org_login)
+    )
+    owner = result.scalar_one_or_none()
+    if not owner:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    return owner.access_token_encrypted
+
+
 @router.get("/{run_id}")
 async def get_run(
     run_id: uuid.UUID,
-    user: User = Depends(get_current_user),
+    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Get a workflow run by its database UUID — only if it belongs to one of the
-    current user's connected organizations."""
-    owned_logins = await _owned_org_logins(db, user.id)
+    """Get a workflow run by its database UUID."""
     result = await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
     db_run = result.scalar_one_or_none()
-    if not db_run or db_run.org_login not in owned_logins:
+    if not db_run:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
     return WorkflowRunResponse.model_validate(db_run).model_dump()
 
@@ -98,20 +106,20 @@ async def get_run(
 @router.get("/{run_id}/logs")
 async def get_run_logs(
     run_id: uuid.UUID,
-    user: User = Depends(get_current_user),
+    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Return the scrubbed log text for a workflow run (fetched live from GitHub) —
-    only if it belongs to one of the current user's connected organizations."""
+    """Return the scrubbed log text for a workflow run (fetched live from GitHub)."""
     from app.core.scrubber import scrub
 
-    owned_logins = await _owned_org_logins(db, user.id)
     result = await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
     db_run = result.scalar_one_or_none()
-    if not db_run or db_run.org_login not in owned_logins:
+    if not db_run:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
-    github = GitHubService(decrypt_token(user.access_token_encrypted))
+    # Use the org owner's token so any logged-in user can fetch logs.
+    enc_token = await _get_org_owner_token(db, db_run.org_login)
+    github = GitHubService(decrypt_token(enc_token))
     try:
         raw_logs = await github.get_run_logs_text(
             db_run.org_login, db_run.repo_name, db_run.github_run_id

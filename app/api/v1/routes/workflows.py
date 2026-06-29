@@ -17,27 +17,33 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-async def _get_org(db: AsyncSession, org_login: str, user_id: object) -> Organization:
+async def _get_org_with_token(db: AsyncSession, org_login: str) -> tuple[Organization, str]:
+    """Return the org and the org owner's encrypted GitHub token.
+
+    Any authenticated user can view any connected org's workflows — we use
+    the org owner's stored token for the GitHub API call so the caller's
+    own GitHub account doesn't need access to the org.
+    """
     result = await db.execute(
-        select(Organization).where(
-            Organization.login == org_login, Organization.owner_id == user_id
-        )
+        select(Organization, User).join(User, User.id == Organization.owner_id)
+        .where(Organization.login == org_login)
     )
-    org = result.scalar_one_or_none()
-    if not org:
+    row = result.first()
+    if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
-    return org
+    org, owner = row
+    return org, owner.access_token_encrypted
 
 @router.get("/{org_login}/workflows", response_model=WorkflowList)
 async def list_all_workflows(
     org_login: str,
-    user: User = Depends(get_current_user),
+    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowList:
     """Fetch all repos for an org and return a flat list of all workflows."""
-    await _get_org(db, org_login, user.id)
+    _org, enc_token = await _get_org_with_token(db, org_login)
 
-    github = GitHubService(decrypt_token(user.access_token_encrypted))
+    github = GitHubService(decrypt_token(enc_token))
     try:
         repos = await github.get_org_repos(org_login)
 
@@ -75,13 +81,13 @@ async def list_all_workflows(
 async def list_repo_workflows(
     org_login: str,
     repo: str,
-    user: User = Depends(get_current_user),
+    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowList:
     """Fetch workflows for a single repository."""
-    await _get_org(db, org_login, user.id)
+    _org, enc_token = await _get_org_with_token(db, org_login)
 
-    github = GitHubService(decrypt_token(user.access_token_encrypted))
+    github = GitHubService(decrypt_token(enc_token))
     try:
         raw_workflows = await github.get_repo_workflows(org_login, repo)
         workflows = [
@@ -106,13 +112,13 @@ async def list_workflow_runs(
     repo: str,
     workflow_id: int,
     per_page: int = 30,
-    user: User = Depends(get_current_user),
+    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Fetch recent runs for a specific workflow."""
-    await _get_org(db, org_login, user.id)
+    _org, enc_token = await _get_org_with_token(db, org_login)
 
-    github = GitHubService(decrypt_token(user.access_token_encrypted))
+    github = GitHubService(decrypt_token(enc_token))
     try:
         runs = await github.get_workflow_runs(org_login, repo, workflow_id, per_page=per_page)
         return {"runs": runs, "total": len(runs)}

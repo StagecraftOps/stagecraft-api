@@ -51,6 +51,7 @@ async def github_login(request: Request) -> RedirectResponse:
         secure=settings.cookie_secure,
         max_age=600,
     )
+    logger.info("OAuth login: setting oauth_state=%s secure=%s redirect_uri=%s", state, settings.cookie_secure, settings.GITHUB_REDIRECT_URI)
     return response
 
 @router.get("/callback")

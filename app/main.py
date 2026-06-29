@@ -1,23 +1,14 @@
 import asyncio
 import logging
-from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
-
-# Surface application logs (logger.info/warning/...) to stdout. Without this
-# only uvicorn's access logs appear and app-level warnings vanish, making
-# issues like Bedrock/SQL failures invisible.
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-)
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from redis.asyncio import Redis
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from slowapi import _rate_limit_exceeded_handler
 from sqlalchemy import text
 
 from app.api.events import redis_event_listener
@@ -27,8 +18,14 @@ from app.api.v1.routes.websocket import router as ws_router
 from app.core.config import INSECURE_DEFAULT_SECRET, settings
 from app.core.limiter import limiter
 from app.db.base import Base, async_engine
+from app.models import organization, remediation, user, workflow_run
 
-from app.models import user, organization, workflow_run, remediation
+# Surface application logs (logger.info/warning/...) to stdout. Without this
+# only uvicorn's access logs appear and app-level warnings vanish.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 def _validate_security_config() -> None:
     """Refuse to boot a production instance with insecure defaults."""

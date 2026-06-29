@@ -192,13 +192,14 @@ async def chat(
     import boto3
 
     from app.core.config import settings
-    from app.services.bedrock_client import _bedrock_boto3_kwargs
+    from app.services.bedrock_client import _apply_bedrock_api_key, _bedrock_boto3_kwargs  # noqa: PLC0415
 
     client = boto3.client(
         "bedrock-runtime",
         region_name=settings.AWS_REGION,
         **_bedrock_boto3_kwargs(),
     )
+    _apply_bedrock_api_key(client)
     intent = await _classify_intent(req.message, settings.BEDROCK_CHAT_MODEL_ID, client)
 
     if intent == "COUNT":

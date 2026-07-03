@@ -8,7 +8,7 @@ from jose import JWTError, jwt
 
 from app.core.config import settings
 
-_FERNET_KDF_LABEL = b"pipelineiq-token-encryption-v1:"
+_FERNET_KDF_LABEL = b"stagecraft-token-encryption-v1:"
 
 def _get_fernet() -> Fernet:
     """Return the Fernet instance used to encrypt stored GitHub tokens.

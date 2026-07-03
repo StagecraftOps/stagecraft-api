@@ -1,8 +1,8 @@
 """Internal, service-to-service routes — not part of the public API surface.
 
 Currently exposes search_remediations, the data backend for the
-agora-mcp-github MCP tool of the same name, which the Investigator Agent
-(agora-worker) calls to query remediation history during a chat
+stagecraft-mcp MCP tool of the same name, which the Investigator Agent
+(stagecraft-worker) calls to query remediation history during a chat
 investigation. Gated by verify_internal_request (a shared-secret header)
 in addition to running on a ClusterIP-only service.
 """

@@ -4,9 +4,9 @@ Revision ID: 0008
 Revises: 0007
 Create Date: 2026-06-23
 
-The multi-agent LangGraph pipeline (agora-worker/app/agents/) already
+The multi-agent LangGraph pipeline (stagecraft-worker/app/agents/) already
 computes security_risk_score, security_findings, pr_title, pr_description,
-and agent_trace per analysis, but agora-worker/app/tasks/remediation.py only
+and agent_trace per analysis, but stagecraft-worker/app/tasks/remediation.py only
 ever logged them and discarded them after the Celery task returned -- they
 never reached the remediations row. This adds columns so that output
 survives, instead of ~40% of what the agents figure out per run vanishing

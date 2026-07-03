@@ -18,7 +18,7 @@ from app.api.v1.routes.websocket import router as ws_router
 from app.core.config import INSECURE_DEFAULT_SECRET, settings
 from app.core.limiter import limiter
 from app.db.base import Base, async_engine
-from app.models import organization, remediation, user, workflow_run
+from app.models import governance, graph, job_run, optimization, organization, pr_review, remediation, standardization, user, workflow_run
 
 # Surface application logs (logger.info/warning/...) to stdout. Without this
 # only uvicorn's access logs appear and app-level warnings vanish.
@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     Schema is NOT created here outside local development. In staging/
     production, schema changes happen exactly once via the Alembic
-    `alembic upgrade head` Helm pre-upgrade hook job (see agora-helm's
+    `alembic upgrade head` Helm pre-upgrade hook job (see stagecraft-helm's
     templates/migration-job.yaml), which runs to completion before the new
     Deployment is rolled out. Running create_all() on every pod start would
     race across replicas and bypass migration history entirely.
@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await async_engine.dispose()
 
 app = FastAPI(
-    title="PipelineIQ API",
+    title="Stagecraft API",
     version="0.1.0",
     description="AI-powered GitHub Actions remediation platform",
     lifespan=lifespan,

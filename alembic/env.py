@@ -17,7 +17,7 @@ if database_url:
     config.set_main_option("sqlalchemy.url", database_url)
 
 from app.db.base import Base
-from app.models import user, organization, workflow_run, remediation
+from app.models import graph, governance, job_run, optimization, pr_review, standardization, user, organization, workflow_run, remediation
 
 target_metadata = Base.metadata
 

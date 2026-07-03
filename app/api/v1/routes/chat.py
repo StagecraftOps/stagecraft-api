@@ -4,7 +4,7 @@ POST /api/v1/chat
 A cheap Nova call first classifies the question as `count` (a literal
 counting/ranking question over workflow_runs) or `investigate` (anything
 else). `count` answers directly from a SQL GROUP BY. `investigate` hands off
-to agora-worker's Investigator Agent via HTTP — a bounded tool-calling loop
+to stagecraft-worker's Investigator Agent via HTTP — a bounded tool-calling loop
 that searches remediation history and reasons across multiple past runs.
 
 Conversation history is persisted in the chat_messages table so it survives

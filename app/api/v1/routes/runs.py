@@ -8,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.security import decrypt_token
 from app.db.base import get_db
+from app.models.job_run import CriticalPathResult, JobRun
 from app.models.organization import Organization
 from app.models.user import User
 from app.models.workflow_run import WorkflowRun
+from app.schemas.job_run import CriticalPathResponse, JobRunList, JobRunResponse
 from app.schemas.workflow import WorkflowRunList, WorkflowRunResponse
 from app.services.github import GitHubService
 
@@ -133,3 +135,33 @@ async def get_run_logs(
         )
     finally:
         await github.aclose()
+
+
+@router.get("/{run_id}/jobs", response_model=JobRunList)
+async def get_run_jobs(
+    run_id: uuid.UUID,
+    _user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> JobRunList:
+    """Per-job timing for a run (populated by stagecraft-worker's job_timing task)."""
+    result = await db.execute(
+        select(JobRun).where(JobRun.workflow_run_id == run_id).order_by(JobRun.started_at)
+    )
+    jobs = result.scalars().all()
+    return JobRunList(jobs=[JobRunResponse.model_validate(j) for j in jobs])
+
+
+@router.get("/{run_id}/critical-path", response_model=CriticalPathResponse)
+async def get_run_critical_path(
+    run_id: uuid.UUID,
+    _user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CriticalPathResponse:
+    """Deterministic longest-path computation over the run's job dependency graph."""
+    result = await db.execute(
+        select(CriticalPathResult).where(CriticalPathResult.workflow_run_id == run_id)
+    )
+    cp = result.scalar_one_or_none()
+    if not cp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Critical path not yet computed for this run")
+    return CriticalPathResponse.model_validate(cp)

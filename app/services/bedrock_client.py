@@ -19,7 +19,7 @@ def _bedrock_boto3_kwargs() -> dict:
     sts = boto3.client("sts", region_name=settings.AWS_REGION)
     assumed = sts.assume_role(
         RoleArn=settings.BEDROCK_CROSS_ACCOUNT_ROLE_ARN,
-        RoleSessionName="agora-api-bedrock",
+        RoleSessionName="stagecraft-api-bedrock",
         DurationSeconds=3600,
     )
     creds = assumed["Credentials"]

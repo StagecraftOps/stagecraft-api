@@ -19,9 +19,6 @@ router = APIRouter()
 
 _publisher = SQSPublisher()
 
-# Slug must match the GitHub App name (lowercased, hyphens)
-GITHUB_APP_INSTALL_URL = "https://github.com/apps/agora-ops/installations/new"
-
 
 @router.get("/", response_model=OrganizationList)
 async def list_orgs(
@@ -46,7 +43,14 @@ async def install_app(
     After installation GitHub fires an 'installation' event to the webhook
     service, which auto-registers the org — no manual connect step needed.
     """
-    return RedirectResponse(url=GITHUB_APP_INSTALL_URL)
+    if not settings.GITHUB_APP_SLUG:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GITHUB_APP_SLUG is not configured",
+        )
+    return RedirectResponse(
+        url=f"https://github.com/apps/{settings.GITHUB_APP_SLUG}/installations/new"
+    )
 
 
 @router.delete("/{org_login}", status_code=status.HTTP_204_NO_CONTENT)

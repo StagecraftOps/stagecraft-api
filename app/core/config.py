@@ -5,7 +5,7 @@ INSECURE_DEFAULT_SECRET = "dev-insecure-secret-change-me"
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    DATABASE_URL: str = "postgresql+asyncpg://agora:password@postgres:5432/agora"
+    DATABASE_URL: str = "postgresql+asyncpg://stagecraft:password@postgres:5432/stagecraft"
     REDIS_URL: str = "redis://redis:6379/0"
 
     GITHUB_CLIENT_ID: str = ""
@@ -13,8 +13,12 @@ class Settings(BaseSettings):
     GITHUB_WEBHOOK_SECRET: str = ""
     GITHUB_REDIRECT_URI: str = "http://localhost:3000/api/auth/callback"
 
+    # GitHub App slug (lowercase, hyphens) — used to build the install URL.
+    # No baked-in default: must be set per-deployment to the real App slug.
+    GITHUB_APP_SLUG: str = ""
+
     AWS_REGION: str = "us-east-1"
-    SQS_QUEUE_URL: str = "https://sqs.us-east-1.amazonaws.com/123456789/pipelineiq-webhooks"
+    SQS_QUEUE_URL: str = "https://sqs.us-east-1.amazonaws.com/123456789/stagecraft-webhooks"
     BEDROCK_MODEL_ID: str = "amazon.nova-pro-v1:0"
 
     # Pipeline Chat model. nova-pro produces more accurate text-to-SQL than the
@@ -49,12 +53,12 @@ class Settings(BaseSettings):
 
     # Shared secret checked on /internal/* routes — these are reachable only
     # from inside the cluster (ClusterIP), but the header still distinguishes
-    # a legitimate agora-mcp-github call from any other in-cluster pod.
+    # a legitimate stagecraft-mcp call from any other in-cluster pod.
     INTERNAL_API_KEY: str = ""
 
-    # Investigator Agent's entry point (agora-worker's health server, see
-    # agora-worker/app/core/health.py) — called synchronously from chat.py.
-    WORKER_INTERNAL_URL: str = "http://agora-worker-agora-worker.agora.svc.cluster.local:8080"
+    # Investigator Agent's entry point (stagecraft-worker's health server, see
+    # stagecraft-worker/app/core/health.py) — called synchronously from chat.py.
+    WORKER_INTERNAL_URL: str = "http://stagecraft-worker.stagecraft.svc.cluster.local:8080"
 
     # Bedrock Knowledge Base ID — used by Pipeline Chat's RetrieveAndGenerate path.
     BEDROCK_KB_ID: str = ""

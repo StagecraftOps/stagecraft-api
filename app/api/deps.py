@@ -13,7 +13,7 @@ from app.core.security import verify_access_token
 from app.db.base import get_db
 from app.models.user import User
 
-AUTH_COOKIE_NAME = "agora_token"
+AUTH_COOKIE_NAME = "stagecraft_token"
 
 async def get_current_user(
     db: AsyncSession = Depends(get_db),

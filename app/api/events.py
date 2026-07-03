@@ -1,7 +1,7 @@
 """Redis pub/sub listener that relays worker events to WebSocket clients.
 
 The remediation-worker publishes events (run_update, remediation_created,
-remediation_updated) to the Redis channel ``agora:events`` after each DB
+remediation_updated) to the Redis channel ``stagecraft:events`` after each DB
 commit. This background task subscribes to that channel and calls
 ``manager.broadcast()`` so connected dashboard clients receive live updates
 without polling.
@@ -17,7 +17,7 @@ from app.api.v1.routes.websocket import manager
 
 logger = logging.getLogger(__name__)
 
-REDIS_CHANNEL = "agora:events"
+REDIS_CHANNEL = "stagecraft:events"
 
 def _make_redis(decode_responses: bool = False) -> Redis:
     """Build a Redis client that handles ElastiCache TLS correctly.
@@ -49,7 +49,7 @@ def _make_redis(decode_responses: bool = False) -> Redis:
 
 
 async def redis_event_listener() -> None:
-    """Subscribe to the agora:events Redis channel and broadcast to WS clients."""
+    """Subscribe to the stagecraft:events Redis channel and broadcast to WS clients."""
     while True:
         try:
             redis = _make_redis(decode_responses=True)

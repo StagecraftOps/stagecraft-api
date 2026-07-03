@@ -1,8 +1,8 @@
-# agora-api
+# stagecraft-api
 
-FastAPI backend for [aGorA](https://github.com/aGora-Ops) — handles GitHub OAuth, org management, workflow/run queries, remediations, WebSocket updates, and analytics.
+FastAPI backend for [Stagecraft](https://github.com/Stagecraft-Ops) — handles GitHub OAuth, org management, workflow/run queries, remediations, WebSocket updates, and analytics.
 
-**Port**: 8000 | **Part of**: [aGora-Ops](https://github.com/aGora-Ops)
+**Port**: 8000 | **Part of**: [Stagecraft-Ops](https://github.com/Stagecraft-Ops)
 
 ## Quick start
 
@@ -26,9 +26,9 @@ to avoid exposing the API's internal schema publicly — see `Settings.is_produc
 
 | Repo | Purpose |
 |------|---------|
-| [agora-webhook](https://github.com/aGora-Ops/agora-webhook) | GitHub webhook receiver → SQS |
-| [agora-worker](https://github.com/aGora-Ops/agora-worker) | Celery worker — AI analysis via Bedrock |
-| [agora-frontend](https://github.com/aGora-Ops/agora-frontend) | Next.js 14 dashboard |
-| [agora-workflows](https://github.com/aGora-Ops/agora-workflows) | Reusable GitHub Actions |
-| [agora-helm](https://github.com/aGora-Ops/agora-helm) | Helm charts for EKS |
-| [agora-infra](https://github.com/aGora-Ops/agora-infra) | Terraform — AWS infrastructure |
+| [stagecraft-webhook](https://github.com/Stagecraft-Ops/stagecraft-webhook) | GitHub webhook receiver → SQS |
+| [stagecraft-worker](https://github.com/Stagecraft-Ops/stagecraft-worker) | Celery worker — AI analysis via Bedrock |
+| [stagecraft-frontend](https://github.com/Stagecraft-Ops/stagecraft-frontend) | Next.js 14 dashboard |
+| [stagecraft-mcp](https://github.com/Stagecraft-Ops/stagecraft-mcp) | MCP server — GitHub tools for agents |
+| [stagecraft-helm](https://github.com/Stagecraft-Ops/stagecraft-helm) | Helm charts for EKS |
+| [stagecraft-infra](https://github.com/Stagecraft-Ops/stagecraft-infra) | Terraform — AWS infrastructure |

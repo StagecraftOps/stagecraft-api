@@ -57,7 +57,7 @@ def test_fernet_key_domain_separation():
 
     raw_key = settings.SECRET_KEY.encode()
 
-    label = b"pipelineiq-token-encryption-v1:"
+    label = b"stagecraft-token-encryption-v1:"
     derived = base64.urlsafe_b64encode(hashlib.sha256(label + raw_key).digest())
 
     raw_b64 = base64.urlsafe_b64encode(raw_key)

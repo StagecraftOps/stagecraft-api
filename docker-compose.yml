@@ -40,7 +40,7 @@ services:
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
       AWS_REGION: ${AWS_REGION:-us-east-1}
       SQS_QUEUE_URL: ${SQS_QUEUE_URL:-}
-      BEDROCK_MODEL_ID: amazon.nova-pro-v1:0
+      BEDROCK_MODEL_ID: anthropic.claude-sonnet-4-6
       SECRET_KEY: ${SECRET_KEY:-local-dev-secret-key-change-in-prod}
       GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI:-http://localhost:3000/api/auth/callback}
       FRONTEND_URL: http://localhost:3000

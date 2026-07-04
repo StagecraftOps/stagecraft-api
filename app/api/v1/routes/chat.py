@@ -1,7 +1,7 @@
 """Pipeline Chat — count answers from SQL, everything else from the Investigator Agent.
 
 POST /api/v1/chat
-A cheap Nova call first classifies the question as `count` (a literal
+A cheap Claude call first classifies the question as `count` (a literal
 counting/ranking question over workflow_runs) or `investigate` (anything
 else). `count` answers directly from a SQL GROUP BY. `investigate` hands off
 to stagecraft-worker's Investigator Agent via HTTP — a bounded tool-calling loop

@@ -23,7 +23,10 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode (no DB connection required)."""
-    url = config.get_main_option("sqlalchemy.url")
+    # Same reasoning as run_async_migrations: read the env var directly
+    # rather than through config, which re-parses alembic.ini's raw
+    # "%(DATABASE_URL)s" placeholder on every file_config access.
+    url = database_url or config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -40,8 +43,15 @@ def do_run_migrations(connection: Connection) -> None:
 
 async def run_async_migrations() -> None:
     """Run migrations using an async engine."""
+    # Built directly rather than via config.get_section(), which calls
+    # ConfigParser's .items() on the raw ini section — that re-interpolates
+    # the literal "%(DATABASE_URL)s" placeholder in alembic.ini (it's meant
+    # to be filled from the DATABASE_URL env var, not a ConfigParser option)
+    # and throws InterpolationMissingOptionError before set_main_option's
+    # override ever comes into play. alembic.ini defines no other
+    # sqlalchemy.* options, so this is the complete configuration.
     connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        {"sqlalchemy.url": database_url},
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

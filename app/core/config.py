@@ -19,13 +19,12 @@ class Settings(BaseSettings):
 
     AWS_REGION: str = "us-east-1"
     SQS_QUEUE_URL: str = "https://sqs.us-east-1.amazonaws.com/123456789/stagecraft-webhooks"
-    BEDROCK_MODEL_ID: str = "amazon.nova-pro-v1:0"
+    BEDROCK_MODEL_ID: str = "anthropic.claude-sonnet-4-6"
 
-    # Pipeline Chat model. nova-pro produces more accurate text-to-SQL than the
-    # lighter models; throttles are handled gracefully and the daily token quota
-    # is large, so the better SQL quality is worth it. Override per-env if a
-    # cheaper model is preferred.
-    BEDROCK_CHAT_MODEL_ID: str = "amazon.nova-pro-v1:0"
+    # Pipeline Chat model — same model as BEDROCK_MODEL_ID by default. Override
+    # per-env if a cheaper/faster model is preferred for text-to-SQL intent
+    # classification specifically.
+    BEDROCK_CHAT_MODEL_ID: str = "anthropic.claude-sonnet-4-6"
 
     # Cross-account Bedrock access (Bedrock account). When set, the API assumes
     # this role before Bedrock calls (Pipeline Chat). Empty = use the pod's IRSA

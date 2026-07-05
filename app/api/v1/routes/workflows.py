@@ -12,27 +12,39 @@ from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.workflow import WorkflowList, WorkflowSummary
 from app.services.github import GitHubService
+from app.services.github_app import get_installation_token_for_org, github_app_configured
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-async def _get_org_with_token(db: AsyncSession, org_login: str) -> tuple[Organization, str]:
-    """Return the org and the org owner's encrypted GitHub token.
-
-    Any authenticated user can view any connected org's workflows — we use
-    the org owner's stored token for the GitHub API call so the caller's
-    own GitHub account doesn't need access to the org.
-    """
-    result = await db.execute(
-        select(Organization, User).join(User, User.id == Organization.owner_id)
-        .where(Organization.login == org_login)
-    )
-    row = result.first()
-    if not row:
+async def _get_org(db: AsyncSession, org_login: str) -> Organization:
+    result = await db.execute(select(Organization).where(Organization.login == org_login))
+    org = result.scalar_one_or_none()
+    if not org:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
-    org, owner = row
-    return org, owner.access_token_encrypted
+    return org
+
+
+async def _github_for_org(db: AsyncSession, org_login: str) -> GitHubService:
+    """Build a GitHub client for org-scoped calls.
+
+    Prefer the GitHub App installation token — it's minted from the App's own
+    credentials, doesn't expire with any user's OAuth session, and is exactly
+    what the worker/raise-PR paths already use. Fall back to the org owner's
+    stored user token only when the App isn't configured (legacy/dev).
+    """
+    org = await _get_org(db, org_login)
+    if github_app_configured():
+        token = await get_installation_token_for_org(org_login)
+    else:
+        result = await db.execute(select(User).where(User.id == org.owner_id))
+        owner = result.scalar_one_or_none()
+        if not owner or not owner.access_token_encrypted:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="No GitHub credentials available for this organization")
+        token = decrypt_token(owner.access_token_encrypted)
+    return GitHubService(token)
+
 
 @router.get("/{org_login}/workflows", response_model=WorkflowList)
 async def list_all_workflows(
@@ -40,12 +52,22 @@ async def list_all_workflows(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowList:
-    """Fetch all repos for an org and return a flat list of all workflows."""
-    _org, enc_token = await _get_org_with_token(db, org_login)
+    """Fetch every workflow across the org's installed repos.
 
-    github = GitHubService(decrypt_token(enc_token))
+    Degrades gracefully: if GitHub is unreachable or the App loses access we
+    return an empty list rather than a 500, so the page shows an honest empty
+    state instead of a blanket error banner.
+    """
+    github = await _github_for_org(db, org_login)
     try:
-        repos = await github.get_org_repos(org_login)
+        try:
+            if github_app_configured():
+                repos = await github.get_installation_repos()
+            else:
+                repos = await github.get_org_repos(org_login)
+        except Exception as exc:
+            logger.warning("Failed to list repos for %s from GitHub: %s", org_login, exc)
+            return WorkflowList(workflows=[], total=0)
 
         async def _get_repo_workflows(repo: dict) -> list[WorkflowSummary]:
             try:
@@ -85,9 +107,7 @@ async def list_repo_workflows(
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowList:
     """Fetch workflows for a single repository."""
-    _org, enc_token = await _get_org_with_token(db, org_login)
-
-    github = GitHubService(decrypt_token(enc_token))
+    github = await _github_for_org(db, org_login)
     try:
         raw_workflows = await github.get_repo_workflows(org_login, repo)
         workflows = [
@@ -116,9 +136,7 @@ async def list_workflow_runs(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Fetch recent runs for a specific workflow."""
-    _org, enc_token = await _get_org_with_token(db, org_login)
-
-    github = GitHubService(decrypt_token(enc_token))
+    github = await _github_for_org(db, org_login)
     try:
         runs = await github.get_workflow_runs(org_login, repo, workflow_id, per_page=per_page)
         return {"runs": runs, "total": len(runs)}

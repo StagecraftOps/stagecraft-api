@@ -33,6 +33,18 @@ _publisher = SQSPublisher()
 _DEPENDENCY_NODE_TYPES = ["workflow", "job", "reusable_workflow", "composite_action"]
 _KNOWLEDGE_NODE_TYPES = ["governance_rule", "failure", "runtime_metric"]
 
+# Nodes are shared/global in Neo4j (no graph_id partitioning) — a Workflow
+# node is referenced by both dependency-graph edges (NEEDS, USES_*) and
+# knowledge-graph edges (GOVERNS). Filtering "any edge touching a primary
+# node" alone conflates the two categories, so the edge fetch must also
+# filter by relationship type per graph_type.
+_DEPENDENCY_REL_TYPES = [
+    "NEEDS", "NEEDS_OUTPUT", "MATRIX_FANOUT", "USES_REUSABLE",
+    "USES_COMPOSITE", "ORCHESTRATOR_SERVICE_DEP", "REPOSITORY_DISPATCH",
+    "WORKFLOW_RUN_TRIGGER",
+]
+_KNOWLEDGE_REL_TYPES = ["GOVERNS", "CAUSED_BY", "MEASURED_BY"]
+
 # Reverse of graph_builder._REL_TYPES / knowledge_graph_builder._KNOWLEDGE_RELS
 # (stagecraft-worker) — api and worker are separate packages, so this is
 # duplicated rather than shared, but it must stay in sync with both.
@@ -79,8 +91,15 @@ async def _fetch_from_neo4j(
 ) -> tuple[list[GraphNodeResponse], list[GraphEdgeResponse]]:
     """Read nodes/edges straight from Neo4j instead of graph_nodes/graph_edges.
 
+    Edges are filtered by an org_login/repo_name (or org_login-only, for
+    knowledge) property tagged on the edge itself at write time — not by
+    which nodes they touch. Nodes are shared/global in Neo4j (no graph_id
+    partitioning), so an orchestrator.yaml-derived edge between two org-wide
+    Service nodes touches neither repo-scoped Workflow/Job node; only the
+    edge's own tag identifies which repo's build produced it.
+
     Fetches the graph_type's "primary" node set, then any additional nodes
-    referenced by an edge touching that set (e.g. a dependency graph's
+    referenced by a matched edge (e.g. a dependency graph's
     REPOSITORY_DISPATCH edge into an org-wide ExternalRepo node, or a
     knowledge graph's GOVERNS edge into a Workflow node) — otherwise an
     edge's endpoint could be missing from `nodes` and the frontend would
@@ -93,11 +112,23 @@ async def _fetch_from_neo4j(
                 "WHERE n.node_type IN $types RETURN n"
             )
             params = {"org": org_login, "repo": repo_name, "types": _DEPENDENCY_NODE_TYPES}
+            edge_query = (
+                "MATCH (s:GraphNode)-[e]->(t:GraphNode) "
+                "WHERE e.org_login = $org AND e.repo_name = $repo AND type(e) IN $rel_types "
+                "RETURN e, s, t"
+            )
+            edge_params = {"org": org_login, "repo": repo_name, "rel_types": _DEPENDENCY_REL_TYPES}
         else:
             node_query = (
                 "MATCH (n:GraphNode {org_login: $org}) WHERE n.node_type IN $types RETURN n"
             )
             params = {"org": org_login, "types": _KNOWLEDGE_NODE_TYPES}
+            edge_query = (
+                "MATCH (s:GraphNode)-[e]->(t:GraphNode) "
+                "WHERE e.org_login = $org AND type(e) IN $rel_types "
+                "RETURN e, s, t"
+            )
+            edge_params = {"org": org_login, "rel_types": _KNOWLEDGE_REL_TYPES}
 
         result = await neo_session.run(node_query, params)
         primary_nodes = {record["n"]["id"]: record["n"] async for record in result}
@@ -105,14 +136,7 @@ async def _fetch_from_neo4j(
         if not primary_nodes:
             return [], []
 
-        edge_result = await neo_session.run(
-            """
-            MATCH (s:GraphNode)-[e]->(t:GraphNode)
-            WHERE s.id IN $ids OR t.id IN $ids
-            RETURN e, s, t
-            """,
-            ids=list(primary_nodes.keys()),
-        )
+        edge_result = await neo_session.run(edge_query, edge_params)
         extra_nodes: dict[str, object] = {}
         edge_responses: list[GraphEdgeResponse] = []
         async for record in edge_result:

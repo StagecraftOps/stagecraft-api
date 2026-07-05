@@ -104,6 +104,13 @@ async def _fetch_from_neo4j(
     knowledge graph's GOVERNS edge into a Workflow node) — otherwise an
     edge's endpoint could be missing from `nodes` and the frontend would
     silently drop the edge, exactly the bug this replaces.
+
+    Known gap (verified live, not fixed — narrow enough to defer): an
+    org-wide Service/ExternalRepo node with zero edges at all (e.g. an
+    orchestrator.yaml entry with no declared dependencies either way) is
+    never picked up as an "extra node" here, since that logic only follows
+    edges. It simply won't appear in the dependency graph view. Postgres
+    doesn't have this gap (it inserts every parsed node unconditionally).
     """
     async with async_neo4j_driver.session() as neo_session:
         if graph_type == "dependency":

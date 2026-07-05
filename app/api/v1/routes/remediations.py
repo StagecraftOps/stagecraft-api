@@ -1,5 +1,6 @@
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -277,6 +278,7 @@ async def raise_pr(
         remediation.pr_number = pr_data.get("number")
         remediation.pr_branch = fix_branch
         remediation.status = "pr_raised"
+        remediation.pr_raised_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(remediation)
         return RemediationDetail.model_validate(remediation)

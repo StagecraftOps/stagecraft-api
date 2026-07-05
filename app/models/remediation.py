@@ -37,6 +37,7 @@ class Remediation(Base):
     security_findings: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     pr_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
     pr_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pr_raised_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     agent_trace: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

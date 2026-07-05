@@ -18,6 +18,7 @@ from app.api.v1.routes.websocket import router as ws_router
 from app.core.config import INSECURE_DEFAULT_SECRET, settings
 from app.core.limiter import limiter
 from app.db.base import Base, async_engine
+from app.db.neo4j import async_neo4j_driver
 from app.models import governance, graph, job_run, optimization, organization, pr_review, remediation, standardization, user, workflow_run
 
 # Surface application logs (logger.info/warning/...) to stdout. Without this
@@ -61,6 +62,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except asyncio.CancelledError:
         pass
     await async_engine.dispose()
+    await async_neo4j_driver.close()
 
 app = FastAPI(
     title="Stagecraft API",

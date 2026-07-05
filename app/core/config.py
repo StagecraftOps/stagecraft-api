@@ -66,6 +66,15 @@ class Settings(BaseSettings):
     BEDROCK_GUARDRAIL_ID: str = ""
     BEDROCK_GUARDRAIL_VERSION: str = ""
 
+    # Neo4j — read-path toggle for dependency_graph.py's GET routes. Leave at
+    # "postgres" until dual-write (stagecraft-worker) is verified correct;
+    # flipping this to "neo4j" needs no code change/redeploy, just a config
+    # value + pod restart.
+    GRAPH_BACKEND: str = "postgres"
+    NEO4J_URI: str = "bolt://stagecraft-neo4j.stagecraft.svc.cluster.local:7687"
+    NEO4J_USER: str = "neo4j"
+    NEO4J_PASSWORD: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT.lower() in {"prod", "production"}

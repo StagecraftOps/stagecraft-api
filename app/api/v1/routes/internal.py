@@ -5,16 +5,25 @@ stagecraft-mcp MCP tool of the same name, which the Investigator Agent
 (stagecraft-worker) calls to query remediation history during a chat
 investigation. Gated by verify_internal_request (a shared-secret header)
 in addition to running on a ClusterIP-only service.
+
+Also exposes /graph/query, the GraphRAG backend for the query_graph MCP
+tool — a small fixed set of parameterized Cypher traversal shapes (never
+free-form Cypher, matching this codebase's "no write tools in agent loops"
+posture) so the Investigator can pull structural graph facts alongside its
+existing text-search tool. Reads Neo4j directly regardless of GRAPH_BACKEND
+(dual-write populates it either way), like search_remediations above this
+doesn't filter by org — this deployment is currently single-tenant.
 """
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import verify_internal_request
 from app.db.base import get_db
+from app.db.neo4j import async_neo4j_driver
 
 router = APIRouter()
 
@@ -128,3 +137,65 @@ async def search_remediations(
             for row in rows
         ]
     )
+
+
+_GRAPH_QUERIES = {
+    "depends_on": (
+        "MATCH (n:GraphNode {repo_name: $repo, workflow_file: $wf})"
+        "-[:NEEDS|NEEDS_OUTPUT|USES_REUSABLE|USES_COMPOSITE]->(dep:GraphNode) "
+        "RETURN DISTINCT dep.display_name AS name"
+    ),
+    "depended_on_by": (
+        "MATCH (n:GraphNode {repo_name: $repo, workflow_file: $wf})"
+        "<-[:NEEDS|USES_REUSABLE|USES_COMPOSITE|WORKFLOW_RUN_TRIGGER|REPOSITORY_DISPATCH]-(dep:GraphNode) "
+        "RETURN DISTINCT dep.display_name AS name"
+    ),
+    "governance": (
+        "MATCH (rule:GraphNode:GovernanceRule)-[:GOVERNS]->"
+        "(w:GraphNode:Workflow {repo_name: $repo, workflow_file: $wf}) "
+        "RETURN DISTINCT rule.display_name AS name"
+    ),
+    "failures": (
+        "MATCH (fail:GraphNode:Failure)-[:CAUSED_BY]->"
+        "(w:GraphNode:Workflow {repo_name: $repo, workflow_file: $wf}) "
+        "RETURN DISTINCT fail.display_name AS name"
+    ),
+}
+
+
+class GraphQueryRequest(BaseModel):
+    repo_name: str
+    workflow_file: str
+    relationship: str = Field(default="depends_on")
+
+
+class GraphQueryResponse(BaseModel):
+    relationship: str
+    items: list[str]
+
+
+@router.post("/graph/query", response_model=GraphQueryResponse)
+async def query_graph(
+    req: GraphQueryRequest,
+    _: None = Depends(verify_internal_request),
+) -> GraphQueryResponse:
+    """GraphRAG backend for the Investigator's query_graph tool.
+
+    relationship='depends_on': what this workflow calls (reusable workflows,
+    composite actions, jobs it needs). 'depended_on_by': what triggers/calls
+    it. 'governance': governance rules already linked to it. 'failures':
+    failure history connected to it. Deliberately a fixed lookup, not
+    free-form Cypher, even though the caller is a trusted internal service.
+    """
+    cypher = _GRAPH_QUERIES.get(req.relationship)
+    if not cypher:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"relationship must be one of {sorted(_GRAPH_QUERIES)}",
+        )
+
+    async with async_neo4j_driver.session() as neo_session:
+        result = await neo_session.run(cypher, repo=req.repo_name, wf=req.workflow_file)
+        items = [record["name"] async for record in result if record["name"]]
+
+    return GraphQueryResponse(relationship=req.relationship, items=items)

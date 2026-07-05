@@ -61,6 +61,27 @@ class GitHubService:
             page += 1
         return repos
 
+    async def get_installation_repos(self, per_page: int = 100) -> list[dict]:
+        """Return all repositories accessible to the App installation this token
+        belongs to. Use with a GitHub App installation token (ghs_...) — unlike
+        /orgs/{org}/repos (which needs a user/org token), this works with the
+        App's own credentials and doesn't depend on any user's OAuth session."""
+        repos: list[dict] = []
+        page = 1
+        while True:
+            data = await self._get(
+                "/installation/repositories",
+                params={"per_page": per_page, "page": page},
+            )
+            batch = data.get("repositories", [])
+            if not batch:
+                break
+            repos.extend(batch)
+            if len(batch) < per_page:
+                break
+            page += 1
+        return repos
+
     async def get_repo_workflows(self, owner: str, repo: str) -> list[dict]:
         """Return all workflows defined in a repository."""
         data = await self._get(f"/repos/{owner}/{repo}/actions/workflows")

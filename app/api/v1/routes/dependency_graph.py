@@ -154,8 +154,19 @@ async def get_knowledge_graph(
     if not graph:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No knowledge graph found")
 
-    nodes = (await db.execute(select(GraphNode).where(GraphNode.graph_id == graph.id))).scalars().all()
+    nodes = list((await db.execute(select(GraphNode).where(GraphNode.graph_id == graph.id))).scalars().all())
     edges = (await db.execute(select(GraphEdge).where(GraphEdge.graph_id == graph.id))).scalars().all()
+
+    # Knowledge-graph edges cross-link to workflow nodes owned by the org's
+    # dependency graph (a different graph_id), so fetch those referenced
+    # nodes too — otherwise an edge's endpoint is missing from `nodes` and
+    # the frontend silently drops the edge.
+    own_ids = {n.id for n in nodes}
+    referenced_ids = {e.source_node_id for e in edges} | {e.target_node_id for e in edges}
+    missing_ids = referenced_ids - own_ids
+    if missing_ids:
+        extra_nodes = (await db.execute(select(GraphNode).where(GraphNode.id.in_(missing_ids)))).scalars().all()
+        nodes.extend(extra_nodes)
 
     return GraphDetail(
         **GraphResponse.model_validate(graph).model_dump(),

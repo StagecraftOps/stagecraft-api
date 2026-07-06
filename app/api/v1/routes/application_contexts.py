@@ -24,6 +24,7 @@ _ASSIGNABLE = [
     "risk_tier",
     "team_owner",
     "security_contact",
+    "notes",
 ]
 
 async def _upsert(db: AsyncSession, org_login: str, repo_name: str, fields: dict, source: str, raw: str | None) -> ApplicationContext:

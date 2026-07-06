@@ -22,6 +22,7 @@ class ApplicationContext(Base):
     risk_tier: Mapped[str | None] = mapped_column(String(32), nullable=True)
     team_owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
     security_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
     raw_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

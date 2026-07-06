@@ -12,6 +12,7 @@ class ApplicationContextBase(BaseModel):
     risk_tier: str | None = Field(default=None, max_length=32)
     team_owner: str | None = Field(default=None, max_length=255)
     security_contact: str | None = Field(default=None, max_length=255)
+    notes: str | None = None
 
 class ApplicationContextCreate(ApplicationContextBase):
     org_login: str = Field(max_length=255)

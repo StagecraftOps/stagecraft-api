@@ -1,4 +1,5 @@
 _LIST_KEYS = {"regulatory_scope"}
+_FREETEXT_KEYS = {"notes"}
 _KNOWN_KEYS = {
     "app_name",
     "language",
@@ -8,6 +9,7 @@ _KNOWN_KEYS = {
     "risk_tier",
     "team_owner",
     "security_contact",
+    "notes",
 }
 
 def _clean(value: str) -> str:
@@ -16,8 +18,12 @@ def _clean(value: str) -> str:
 def parse_context_file(raw: str) -> dict:
     result: dict = {}
     last_list_key: str | None = None
-    for line in raw.splitlines():
+    lines = raw.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         stripped = line.strip()
+        i += 1
         if not stripped or stripped in ("---", "```", "```yaml", "```yml") or stripped.startswith("#"):
             continue
         if stripped.startswith("- ") and last_list_key:
@@ -31,6 +37,11 @@ def parse_context_file(raw: str) -> dict:
         if key not in _KNOWN_KEYS:
             last_list_key = None
             continue
+        if key in _FREETEXT_KEYS:
+            last_list_key = None
+            rest = "\n".join(lines[i:]).strip()
+            result[key] = rest if rest else value
+            break
         if key in _LIST_KEYS:
             last_list_key = key
             if value.startswith("[") and value.endswith("]"):

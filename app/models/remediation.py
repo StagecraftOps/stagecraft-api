@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -26,6 +26,8 @@ class Remediation(Base):
     fixed_yaml: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     suggested_yaml: Mapped[str | None] = mapped_column(Text, nullable=True)
     original_yaml: Mapped[str | None] = mapped_column(Text, nullable=True)
+    likely_code_level: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    code_level_reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
     pr_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     pr_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     pr_branch: Mapped[str | None] = mapped_column(String(512), nullable=True)

@@ -1,14 +1,3 @@
-"""Add workflow_runs.updated_at and organizations.sync_status.
-
-Revision ID: 0002
-Revises: 0001
-Create Date: 2026-06-18
-
-Supports the unified runs view: workflow_runs rows are now upserted across
-a run's full lifecycle (queued -> in_progress -> completed), so we need
-updated_at to track re-syncs, and organizations.sync_status to track the
-one-shot historical backfill kicked off when an org is connected.
-"""
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -18,7 +7,6 @@ revision: str = "0002"
 down_revision: Union[str, None] = "0001"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
-
 
 def upgrade() -> None:
     op.add_column(
@@ -39,7 +27,6 @@ def upgrade() -> None:
         "organizations",
         sa.Column("sync_status", sa.String(32), nullable=False, server_default="pending"),
     )
-
 
 def downgrade() -> None:
     op.drop_column("organizations", "sync_status")

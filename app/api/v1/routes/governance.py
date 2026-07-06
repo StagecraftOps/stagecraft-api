@@ -24,9 +24,7 @@ router = APIRouter()
 
 _publisher = SQSPublisher()
 
-
 def _extract_text(filename: str, content: bytes) -> str:
-    """Extract plain text from an uploaded governance/app-profile document."""
     lower = filename.lower()
     if lower.endswith(".docx"):
         from docx import Document
@@ -40,7 +38,6 @@ def _extract_text(filename: str, content: bytes) -> str:
         return "\n".join((page.extract_text() or "") for page in reader.pages)
     return content.decode("utf-8", errors="replace")
 
-
 @router.post("/{org_login}/governance/documents", response_model=GovernanceDocumentResponse)
 async def upload_governance_document(
     org_login: str,
@@ -50,11 +47,6 @@ async def upload_governance_document(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> GovernanceDocumentResponse:
-    """Upload a governance policy or application-profile document (FR-5/FR-6 input).
-
-    Triggers async LLM-based structured-requirement extraction in the worker
-    and chunk-embedding for retrieval by the Governance Agent.
-    """
     if doc_type not in ("governance_policy", "app_profile"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="doc_type must be governance_policy or app_profile")
 
@@ -84,7 +76,6 @@ async def upload_governance_document(
 
     return GovernanceDocumentResponse.model_validate(document)
 
-
 @router.get("/{org_login}/governance/documents", response_model=GovernanceDocumentList)
 async def list_governance_documents(
     org_login: str,
@@ -99,7 +90,6 @@ async def list_governance_documents(
     documents = result.scalars().all()
     return GovernanceDocumentList(documents=[GovernanceDocumentResponse.model_validate(d) for d in documents])
 
-
 @router.post("/{org_login}/repos/{repo_name}/governance/analyze")
 async def analyze_governance(
     org_login: str,
@@ -108,8 +98,6 @@ async def analyze_governance(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Enqueue a compliance analysis — framework mode routes to the Compliance
-    Agent, document mode routes to the Governance Agent."""
     if body.mode not in ("framework", "document"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="mode must be framework or document")
     if body.mode == "framework" and not body.framework:
@@ -127,7 +115,6 @@ async def analyze_governance(
         "document_id": str(body.document_id) if body.document_id else None,
     })
     return {"status": "enqueued", "org_login": org_login, "repo_name": repo_name, "mode": body.mode}
-
 
 @router.get("/{org_login}/repos/{repo_name}/governance/findings", response_model=ComplianceFindingList)
 async def get_compliance_findings(

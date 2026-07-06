@@ -7,15 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-
 class Graph(Base):
-    """A built dependency or knowledge graph for an org (optionally scoped to a repo).
-
-    graph_type='dependency' graphs are built by stagecraft-worker's
-    app/analysis/graph_builder.py from a repo's GitHub Actions workflow files.
-    graph_type='knowledge' graphs share the same node/edge tables and can
-    cross-reference dependency-graph node ids directly (see graph_edges).
-    """
     __tablename__ = "graphs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -33,13 +25,7 @@ class Graph(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
-
 class GraphNode(Base):
-    """A node in a graph: a job, reusable workflow, composite action, service, etc.
-
-    external_key is the stable identifier used to dedupe on rebuild (e.g.
-    "workflow_file::job_id" for a job node, "domain/service" for a service node).
-    """
     __tablename__ = "graph_nodes"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -54,9 +40,7 @@ class GraphNode(Base):
     node_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-
 class GraphEdge(Base):
-    """A directed edge between two graph_nodes rows (same or cross graph_id)."""
     __tablename__ = "graph_edges"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

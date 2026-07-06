@@ -7,10 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-
 class JobRun(Base):
-    """Per-job timing for a workflow run (GitHub Actions Jobs API), used for
-    FR-2 runtime monitoring / critical-path computation — pure data, no AI."""
     __tablename__ = "job_runs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -29,10 +26,7 @@ class JobRun(Base):
     runner_group_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-
 class JobStep(Base):
-    """Per-step timing within a job. High-volume/append-only, so it uses the
-    BigInteger autoincrement PK convention (matches chat_messages), not UUID."""
     __tablename__ = "job_steps"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -47,10 +41,7 @@ class JobStep(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-
 class CriticalPathResult(Base):
-    """Computed critical path for one workflow run — deterministic DAG
-    longest-path over job_runs/job dependency edges, no AI involved."""
     __tablename__ = "critical_path_results"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

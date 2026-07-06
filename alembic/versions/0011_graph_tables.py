@@ -1,14 +1,3 @@
-"""Add graphs/graph_nodes/graph_edges tables (dependency + knowledge graphs)
-
-Revision ID: 0011
-Revises: 0010
-Create Date: 2026-07-03
-
-Shared schema for FR-1 (dependency graph) and FR-11 (knowledge graph): both
-populate the same node/edge tables, distinguished by graphs.graph_type, so
-knowledge-graph edges can cross-reference dependency-graph node ids directly
-without an ETL step between two separate stores.
-"""
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -17,7 +6,6 @@ revision = '0011'
 down_revision = '0010'
 branch_labels = None
 depends_on = None
-
 
 def upgrade() -> None:
     op.create_table(
@@ -71,7 +59,6 @@ def upgrade() -> None:
     op.create_index('ix_graph_edges_graph_id_source', 'graph_edges', ['graph_id', 'source_node_id'])
     op.create_index('ix_graph_edges_graph_id_target', 'graph_edges', ['graph_id', 'target_node_id'])
     op.create_index('ix_graph_edges_edge_type', 'graph_edges', ['edge_type'])
-
 
 def downgrade() -> None:
     op.drop_index('ix_graph_edges_edge_type', table_name='graph_edges')

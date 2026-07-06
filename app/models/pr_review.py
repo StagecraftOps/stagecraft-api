@@ -7,9 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-
 class PRReview(Base):
-    """FR-12a: Peer Review Agent output for one pull request."""
     __tablename__ = "pr_reviews"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -17,7 +15,7 @@ class PRReview(Base):
     repo_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     pr_number: Mapped[int] = mapped_column(Integer, nullable=False)
     pr_url: Mapped[str] = mapped_column(String(1024), nullable=False, server_default="")
-    risk_score: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0-10
+    risk_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     findings: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     review_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(64), nullable=False, default="pending", index=True)

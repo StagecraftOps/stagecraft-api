@@ -11,16 +11,7 @@ from app.schemas.job_run import LongestJobEntry, LongestWorkflowEntry, RunnerBre
 
 router = APIRouter()
 
-# A 'cancelled' job/run's duration is (completed_at - started_at) same as any
-# other, but for a run stuck queued waiting on a runner, that number measures
-# queue time, not compute time -- verified live, a matrix-heavy workflow in
-# this org queued for 24-55h before GitHub's own queued-job timeout cancelled
-# it, dwarfing every genuine (a few minutes) duration and making the whole
-# "longest running" ranking pure noise. Excluded from both queries below;
-# 'failure' is kept, since a test that ran for 10 real minutes before failing
-# is still a genuine duration worth ranking.
 _EXCLUDED_CONCLUSIONS = ("cancelled",)
-
 
 @router.get("/{org_login}/performance/longest-jobs", response_model=list[LongestJobEntry])
 async def longest_jobs(
@@ -29,7 +20,6 @@ async def longest_jobs(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[LongestJobEntry]:
-    """Longest-running jobs across an org's recent runs — pure duration ranking, no AI."""
     result = await db.execute(
         select(JobRun, WorkflowRun.repo_name)
         .join(WorkflowRun, WorkflowRun.id == JobRun.workflow_run_id)
@@ -51,7 +41,6 @@ async def longest_jobs(
         for job, repo_name in result.all()
     ]
 
-
 @router.get("/{org_login}/performance/longest-workflows", response_model=list[LongestWorkflowEntry])
 async def longest_workflows(
     org_login: str,
@@ -59,7 +48,6 @@ async def longest_workflows(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[LongestWorkflowEntry]:
-    """Longest-running workflow runs (completed_at - started_at) across an org."""
     result = await db.execute(
         select(WorkflowRun)
         .where(
@@ -83,27 +71,12 @@ async def longest_workflows(
         for r in ranked
     ]
 
-
 @router.get("/{org_login}/performance/runner-breakdown", response_model=list[RunnerBreakdownEntry])
 async def runner_breakdown(
     org_login: str,
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[RunnerBreakdownEntry]:
-    """Job count + avg duration grouped by runner label combo (e.g.
-    ["ubuntu-latest"] or ["self-hosted","linux","x64"]) -- synced from
-    GitHub's Jobs API `labels` field (job_timing.py), not the ephemeral
-    `runner_name` (ephemeral per-job instance id, uninformative for a type
-    breakdown).
-
-    Deliberately NOT filtered by conclusion, unlike the two endpoints above:
-    a job that never got a runner assigned (runner_labels IS NULL) forms its
-    own "no runner assigned" bucket here, which is real signal about queue/
-    capacity pressure, not noise to exclude -- the two ranking endpoints
-    above exclude cancelled runs because a stuck run's *duration* is
-    meaningless, but a stuck run's *existence* is exactly what this endpoint
-    should surface.
-    """
     result = await db.execute(
         select(
             JobRun.runner_labels,

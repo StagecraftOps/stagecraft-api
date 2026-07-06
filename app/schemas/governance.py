@@ -3,7 +3,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-
 class GovernanceDocumentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -16,10 +15,8 @@ class GovernanceDocumentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-
 class GovernanceDocumentList(BaseModel):
     documents: list[GovernanceDocumentResponse]
-
 
 class ComplianceFindingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -36,13 +33,11 @@ class ComplianceFindingResponse(BaseModel):
     severity: str
     computed_at: datetime
 
-
 class ComplianceFindingList(BaseModel):
     findings: list[ComplianceFindingResponse]
 
-
 class GovernanceAnalyzeRequest(BaseModel):
-    mode: str  # "framework" | "document"
+    mode: str
     ref: str = "main"
-    framework: str | None = None  # required when mode == "framework", e.g. "HIPAA"
-    document_id: uuid.UUID | None = None  # required when mode == "document"
+    framework: str | None = None
+    document_id: uuid.UUID | None = None

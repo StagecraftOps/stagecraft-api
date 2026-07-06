@@ -21,13 +21,10 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
 )
 
-
 class Base(DeclarativeBase):
     pass
 
-
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency that provides an async DB session."""
     async with AsyncSessionLocal() as session:
         try:
             yield session

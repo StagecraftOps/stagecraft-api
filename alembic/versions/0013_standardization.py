@@ -1,9 +1,3 @@
-"""Add workflow_templates/template_diffs/pattern_clusters tables (FR-3/FR-4)
-
-Revision ID: 0013
-Revises: 0012
-Create Date: 2026-07-03
-"""
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
@@ -12,7 +6,6 @@ revision = '0013'
 down_revision = '0012'
 branch_labels = None
 depends_on = None
-
 
 def upgrade() -> None:
     op.create_table(
@@ -55,7 +48,6 @@ def upgrade() -> None:
     )
     op.create_index('ix_pattern_clusters_org_login', 'pattern_clusters', ['org_login'])
     op.create_index('ix_pattern_clusters_pattern_hash', 'pattern_clusters', ['pattern_hash'])
-
 
 def downgrade() -> None:
     op.drop_index('ix_pattern_clusters_pattern_hash', table_name='pattern_clusters')

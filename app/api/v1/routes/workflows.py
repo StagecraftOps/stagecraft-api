@@ -25,15 +25,7 @@ async def _get_org(db: AsyncSession, org_login: str) -> Organization:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
     return org
 
-
 async def _github_for_org(db: AsyncSession, org_login: str) -> GitHubService:
-    """Build a GitHub client for org-scoped calls.
-
-    Prefer the GitHub App installation token — it's minted from the App's own
-    credentials, doesn't expire with any user's OAuth session, and is exactly
-    what the worker/raise-PR paths already use. Fall back to the org owner's
-    stored user token only when the App isn't configured (legacy/dev).
-    """
     org = await _get_org(db, org_login)
     if github_app_configured():
         token = await get_installation_token_for_org(org_login)
@@ -45,19 +37,12 @@ async def _github_for_org(db: AsyncSession, org_login: str) -> GitHubService:
         token = decrypt_token(owner.access_token_encrypted)
     return GitHubService(token)
 
-
 @router.get("/{org_login}/workflows", response_model=WorkflowList)
 async def list_all_workflows(
     org_login: str,
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowList:
-    """Fetch every workflow across the org's installed repos.
-
-    Degrades gracefully: if GitHub is unreachable or the App loses access we
-    return an empty list rather than a 500, so the page shows an honest empty
-    state instead of a blanket error banner.
-    """
     github = await _github_for_org(db, org_login)
     try:
         try:
@@ -106,7 +91,6 @@ async def list_repo_workflows(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowList:
-    """Fetch workflows for a single repository."""
     github = await _github_for_org(db, org_login)
     try:
         raw_workflows = await github.get_repo_workflows(org_login, repo)
@@ -135,7 +119,6 @@ async def list_workflow_runs(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Fetch recent runs for a specific workflow."""
     github = await _github_for_org(db, org_login)
     try:
         runs = await github.get_workflow_runs(org_login, repo, workflow_id, per_page=per_page)

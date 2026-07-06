@@ -27,7 +27,6 @@ GITHUB_API_URL = "https://api.github.com"
 @router.get("/github")
 @limiter.limit("10/minute")
 async def github_login(request: Request) -> RedirectResponse:
-    """Redirect the browser to GitHub's OAuth authorization page."""
     state = secrets.token_urlsafe(16)
     redis = _make_redis(decode_responses=True)
     try:
@@ -37,13 +36,7 @@ async def github_login(request: Request) -> RedirectResponse:
     params = {
         "client_id": settings.GITHUB_CLIENT_ID,
         "redirect_uri": settings.GITHUB_REDIRECT_URI,
-        # workflow scope is required to create/update files under .github/workflows/ —
-        # without it GitHub 404s the Contents API write (masked, like private-repo access)
-        # even though repo grants write everywhere else.
-        # user:email — GitHub only returns a user's email on GET /user when
-        # it's public or the token has this scope; without it, email-based
-        # features (fix-notification emails) silently get a null email for
-        # any user with a private GitHub email.
+
         "scope": "repo,workflow,admin:org_hook,read:org,user:email",
         "state": state,
     }
@@ -59,7 +52,6 @@ async def github_callback(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
-    """Exchange OAuth code for an access token, upsert user, and set JWT cookie."""
     redis = _make_redis(decode_responses=True)
     try:
         key = f"oauth_state:{state}"
@@ -148,19 +140,10 @@ async def github_callback(
 
 @router.get("/me", response_model=UserMe)
 async def get_me(user: User = Depends(get_current_user)) -> UserMe:
-    """Return the currently authenticated user's profile."""
     return UserMe.model_validate(user)
 
 @router.post("/logout")
 async def logout(response: Response, user: User = Depends(get_current_user)) -> dict:
-    """Revoke the user's GitHub access token, then clear the local session cookie.
-
-    Revocation is best-effort: if GitHub's API is unreachable or rejects the
-    call, the user is still logged out locally — a failed revoke must never
-    leave someone unable to log out. Without this, logout only ever cleared
-    the session cookie; the underlying GitHub token stayed valid until the
-    user manually revoked it via github.com/settings/applications.
-    """
     try:
         access_token = decrypt_token(user.access_token_encrypted)
         async with httpx.AsyncClient() as client:

@@ -7,7 +7,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 

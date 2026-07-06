@@ -7,16 +7,13 @@ from app.core.config import settings
 
 _GH_API = "https://api.github.com"
 
-
 def _make_app_jwt() -> str:
     now = int(time.time())
     payload = {"iat": now - 60, "exp": now + 600, "iss": settings.GITHUB_APP_ID}
     pem = settings.GITHUB_APP_PRIVATE_KEY.replace("\\n", "\n")
     return pyjwt.encode(payload, pem, algorithm="RS256")
 
-
 async def get_installation_token(installation_id: int) -> str:
-    """Exchange an installation ID for a short-lived installation access token."""
     app_jwt = _make_app_jwt()
     headers = {
         "Authorization": f"Bearer {app_jwt}",
@@ -32,9 +29,7 @@ async def get_installation_token(installation_id: int) -> str:
         r.raise_for_status()
         return r.json()["token"]
 
-
 async def get_org_installation_id(org_login: str) -> int:
-    """Look up the installation ID for an org (used when it isn't cached in DB)."""
     app_jwt = _make_app_jwt()
     headers = {
         "Authorization": f"Bearer {app_jwt}",
@@ -46,12 +41,9 @@ async def get_org_installation_id(org_login: str) -> int:
         r.raise_for_status()
         return r.json()["id"]
 
-
 async def get_installation_token_for_org(org_login: str) -> str:
-    """Convenience: get a token for an org by login (fetches installation ID live)."""
     installation_id = await get_org_installation_id(org_login)
     return await get_installation_token(installation_id)
-
 
 def github_app_configured() -> bool:
     return bool(settings.GITHUB_APP_ID and settings.GITHUB_APP_PRIVATE_KEY)

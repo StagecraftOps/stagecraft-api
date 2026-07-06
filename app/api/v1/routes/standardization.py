@@ -24,7 +24,6 @@ router = APIRouter()
 
 _publisher = SQSPublisher()
 
-
 @router.post("/{org_login}/templates", response_model=WorkflowTemplateResponse)
 async def create_template(
     org_login: str,
@@ -32,7 +31,6 @@ async def create_template(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowTemplateResponse:
-    """Register an approved standard workflow template for an org (FR-3 diff target)."""
     template = WorkflowTemplate(
         org_login=org_login,
         name=body.name,
@@ -44,7 +42,6 @@ async def create_template(
     await db.commit()
     await db.refresh(template)
     return WorkflowTemplateResponse.model_validate(template)
-
 
 @router.get("/{org_login}/templates", response_model=WorkflowTemplateList)
 async def list_templates(
@@ -59,7 +56,6 @@ async def list_templates(
     )
     templates = result.scalars().all()
     return WorkflowTemplateList(templates=[WorkflowTemplateResponse.model_validate(t) for t in templates])
-
 
 @router.delete("/{org_login}/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def deactivate_template(
@@ -79,7 +75,6 @@ async def deactivate_template(
     template.is_active = False
     await db.commit()
 
-
 @router.post("/{org_login}/repos/{repo_name}/standardization/analyze")
 async def analyze_standardization(
     org_login: str,
@@ -88,7 +83,6 @@ async def analyze_standardization(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Enqueue both FR-3 (template diff) and FR-4 (pattern frequency) analysis for a repo."""
     await _publisher.publish({
         "event_type": "run_template_diff",
         "org_login": org_login,
@@ -102,7 +96,6 @@ async def analyze_standardization(
         "ref": body.ref,
     })
     return {"status": "enqueued", "org_login": org_login, "repo_name": repo_name}
-
 
 @router.get("/{org_login}/repos/{repo_name}/standardization/diffs", response_model=TemplateDiffList)
 async def get_template_diffs(
@@ -119,14 +112,12 @@ async def get_template_diffs(
     diffs = result.scalars().all()
     return TemplateDiffList(diffs=[TemplateDiffResponse.model_validate(d) for d in diffs])
 
-
 @router.get("/{org_login}/standardization/patterns", response_model=PatternClusterList)
 async def get_pattern_clusters(
     org_login: str,
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> PatternClusterList:
-    """FR-4: reusable-component candidates found across the org's workflows."""
     result = await db.execute(
         select(PatternCluster)
         .where(PatternCluster.org_login == org_login)

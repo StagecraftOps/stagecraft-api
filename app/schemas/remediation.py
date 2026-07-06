@@ -3,7 +3,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-
 class RemediationBase(BaseModel):
     org_login: str
     repo_name: str
@@ -13,11 +12,9 @@ class RemediationBase(BaseModel):
     bedrock_model: str
     status: str
 
-
 class RemediationCreate(RemediationBase):
     workflow_run_id: uuid.UUID
     suggested_yaml: str | None = None
-
 
 class RemediationResponse(RemediationBase):
     model_config = ConfigDict(from_attributes=True)
@@ -39,11 +36,8 @@ class RemediationResponse(RemediationBase):
     created_at: datetime
     updated_at: datetime
 
-
 class RemediationDetail(RemediationResponse):
-    """Full detail — same as response but always includes suggested_yaml."""
     pass
-
 
 class RemediationList(BaseModel):
     remediations: list[RemediationResponse]

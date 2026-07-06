@@ -1,9 +1,3 @@
-"""Add job_runs/job_steps/critical_path_results tables (FR-2 runtime monitoring)
-
-Revision ID: 0012
-Revises: 0011
-Create Date: 2026-07-03
-"""
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
@@ -12,7 +6,6 @@ revision = '0012'
 down_revision = '0011'
 branch_labels = None
 depends_on = None
-
 
 def upgrade() -> None:
     op.create_table(
@@ -54,7 +47,6 @@ def upgrade() -> None:
         sa.Column('longest_job_id', UUID(as_uuid=True), sa.ForeignKey('job_runs.id', ondelete='SET NULL'), nullable=True),
         sa.Column('computed_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
-
 
 def downgrade() -> None:
     op.drop_table('critical_path_results')

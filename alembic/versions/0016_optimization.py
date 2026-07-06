@@ -1,9 +1,3 @@
-"""Add optimization_recommendations/simulation_runs tables (FR-7/FR-8/FR-9)
-
-Revision ID: 0016
-Revises: 0015
-Create Date: 2026-07-03
-"""
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
@@ -12,7 +6,6 @@ revision = '0016'
 down_revision = '0015'
 branch_labels = None
 depends_on = None
-
 
 def upgrade() -> None:
     op.create_table(
@@ -45,7 +38,6 @@ def upgrade() -> None:
         sa.Column('computed_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
     op.create_index('ix_simulation_runs_recommendation_id', 'simulation_runs', ['recommendation_id'])
-
 
 def downgrade() -> None:
     op.drop_index('ix_simulation_runs_recommendation_id', table_name='simulation_runs')

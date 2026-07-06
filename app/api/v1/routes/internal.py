@@ -1,19 +1,3 @@
-"""Internal, service-to-service routes — not part of the public API surface.
-
-Currently exposes search_remediations, the data backend for the
-stagecraft-mcp MCP tool of the same name, which the Investigator Agent
-(stagecraft-worker) calls to query remediation history during a chat
-investigation. Gated by verify_internal_request (a shared-secret header)
-in addition to running on a ClusterIP-only service.
-
-Also exposes /graph/query, the GraphRAG backend for the query_graph MCP
-tool — a small fixed set of parameterized Cypher traversal shapes (never
-free-form Cypher, matching this codebase's "no write tools in agent loops"
-posture) so the Investigator can pull structural graph facts alongside its
-existing text-search tool. Reads Neo4j directly regardless of GRAPH_BACKEND
-(dual-write populates it either way), like search_remediations above this
-doesn't filter by org — this deployment is currently single-tenant.
-"""
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -29,14 +13,12 @@ router = APIRouter()
 
 _MAX_RESULTS = 20
 
-
 class RemediationSearchRequest(BaseModel):
     query: str | None = Field(default=None, max_length=500)
     repo_name: str | None = None
     failure_category: str | None = None
     since_days: int | None = Field(default=None, ge=1, le=365)
     limit: int = Field(default=8, ge=1, le=_MAX_RESULTS)
-
 
 class RemediationSearchResult(BaseModel):
     remediation_id: str
@@ -49,10 +31,8 @@ class RemediationSearchResult(BaseModel):
     created_at: datetime
     relevance: float | None = None
 
-
 class RemediationSearchResponse(BaseModel):
     results: list[RemediationSearchResult]
-
 
 @router.post("/remediations/search", response_model=RemediationSearchResponse)
 async def search_remediations(
@@ -60,14 +40,6 @@ async def search_remediations(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(verify_internal_request),
 ) -> RemediationSearchResponse:
-    """Search remediation history by filters and/or semantic similarity.
-
-    With `query` set: embeds it and ranks by pgvector cosine similarity
-    against log_embeddings, joined back to remediations for the structured
-    fields. Without `query`: plain filtered SQL over remediations, newest
-    first — used when the investigator already knows exactly which
-    repo/category/time window it wants, with no need for semantic ranking.
-    """
     filters = ["1=1"]
     params: dict = {"limit": req.limit}
     if req.repo_name:
@@ -138,18 +110,8 @@ async def search_remediations(
         ]
     )
 
-
 _MAX_WORKFLOW_MATCHES = 5
 
-# Anchor clause shared by every relationship below: the LLM calling this only
-# has whatever colloquial name the user typed ("ci-auth-service"), never the
-# exact workflow_file path (".github/workflows/ci-auth-service.yml") or
-# necessarily the exact repo_name -- an exact-equality match against those
-# was a real dead end (verified live: a real question returned zero results
-# because the model's guess didn't match either field byte-for-byte). Fuzzy
-# CONTAINS against both workflow_file and display_name, repo optional,
-# capped at _MAX_WORKFLOW_MATCHES matching workflows so an over-broad term
-# doesn't silently aggregate half the org's dependency graph into one answer.
 _WORKFLOW_MATCH_CLAUSE = (
     "MATCH (w:GraphNode:Workflow) "
     "WHERE ($repo IS NULL OR toLower(w.repo_name) = toLower($repo)) "
@@ -158,33 +120,14 @@ _WORKFLOW_MATCH_CLAUSE = (
 )
 
 _GRAPH_QUERIES = {
-    # NEEDS/NEEDS_OUTPUT/USES_REUSABLE/USES_COMPOSITE are never anchored on
-    # the Workflow node itself -- they're job-level (a job needs another job,
-    # or a job calls a reusable workflow/composite action), always sourced
-    # from a :Job node with workflow_file = w.workflow_file. A Workflow node's
-    # only outgoing edge type is WORKFLOW_RUN_TRIGGER. Anchoring this query
-    # directly on (w)-[...]->(dep) (the original design) could therefore
-    # NEVER return a result for any workflow -- verified live: a real
-    # question about a workflow with a real, populated NEEDS/USES_REUSABLE
-    # chain (confirmed via direct Cypher) still came back empty through this
-    # endpoint before this fix.
+
     "depends_on": (
         _WORKFLOW_MATCH_CLAUSE
         + "MATCH (j:GraphNode:Job {workflow_file: w.workflow_file})"
         "-[:NEEDS|NEEDS_OUTPUT|USES_REUSABLE|USES_COMPOSITE]->(dep:GraphNode) "
         "RETURN DISTINCT dep.display_name AS name"
     ),
-    # Mirror of the above: NEEDS is always same-workflow job-to-job (GHA
-    # forbids cross-workflow needs:), and REPOSITORY_DISPATCH always targets
-    # an ExternalRepo placeholder (dispatch_detector.py), never resolves
-    # back into a real Workflow node -- both are dropped here since they can
-    # never match a Workflow anchor either. USES_REUSABLE/USES_COMPOSITE
-    # incoming IS reachable: a local `uses: ./this-workflow.yml` reference
-    # bridges to this exact Workflow node (see workflow_parser.py's
-    # bridging fix). WORKFLOW_RUN_TRIGGER's edge direction is
-    # source=triggering workflow -> target=triggered workflow, so "what
-    # depends on w" (things that run because of w) is the OUTGOING
-    # direction here, not incoming.
+
     "depended_on_by": (
         _WORKFLOW_MATCH_CLAUSE
         + "OPTIONAL MATCH (w)-[:WORKFLOW_RUN_TRIGGER]->(triggered:GraphNode) "
@@ -205,36 +148,20 @@ _GRAPH_QUERIES = {
     ),
 }
 
-
 class GraphQueryRequest(BaseModel):
     repo_name: str | None = None
     workflow_file: str
     relationship: str = Field(default="depends_on")
 
-
 class GraphQueryResponse(BaseModel):
     relationship: str
     items: list[str]
-
 
 @router.post("/graph/query", response_model=GraphQueryResponse)
 async def query_graph(
     req: GraphQueryRequest,
     _: None = Depends(verify_internal_request),
 ) -> GraphQueryResponse:
-    """GraphRAG backend for the Investigator's query_graph tool.
-
-    relationship='depends_on': what this workflow calls (reusable workflows,
-    composite actions, jobs it needs). 'depended_on_by': what triggers/calls
-    it. 'governance': governance rules already linked to it. 'failures':
-    failure history connected to it. Deliberately a fixed lookup, not
-    free-form Cypher, even though the caller is a trusted internal service.
-
-    workflow_file is matched fuzzily (case-insensitive substring against
-    both workflow_file and display_name) and repo_name is optional -- the
-    caller only ever has a colloquial name to work with, never necessarily
-    the exact repo-root-relative path.
-    """
     cypher = _GRAPH_QUERIES.get(req.relationship)
     if not cypher:
         raise HTTPException(

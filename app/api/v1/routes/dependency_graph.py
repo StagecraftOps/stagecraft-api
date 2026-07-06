@@ -33,17 +33,8 @@ _publisher = SQSPublisher()
 _DEPENDENCY_NODE_TYPES = ["workflow", "job", "reusable_workflow", "composite_action"]
 _KNOWLEDGE_NODE_TYPES = ["governance_rule", "failure", "runtime_metric"]
 
-# Reverse of graph_builder._ORG_WIDE_DECLARABLE_TYPES (stagecraft-worker) —
-# org-wide node types with no repo_name of their own, resolved per-repo via
-# the declared_by_repos list property instead. Kept in sync manually, same
-# as _REL_TYPE_TO_EDGE_TYPE below.
 _ORG_WIDE_DECLARABLE_TYPES = ["service", "external_repo"]
 
-# Nodes are shared/global in Neo4j (no graph_id partitioning) — a Workflow
-# node is referenced by both dependency-graph edges (NEEDS, USES_*) and
-# knowledge-graph edges (GOVERNS). Filtering "any edge touching a primary
-# node" alone conflates the two categories, so the edge fetch must also
-# filter by relationship type per graph_type.
 _DEPENDENCY_REL_TYPES = [
     "NEEDS", "NEEDS_OUTPUT", "MATRIX_FANOUT", "USES_REUSABLE",
     "USES_COMPOSITE", "ORCHESTRATOR_SERVICE_DEP", "REPOSITORY_DISPATCH",
@@ -51,9 +42,6 @@ _DEPENDENCY_REL_TYPES = [
 ]
 _KNOWLEDGE_REL_TYPES = ["GOVERNS", "CAUSED_BY", "MEASURED_BY"]
 
-# Reverse of graph_builder._REL_TYPES / knowledge_graph_builder._KNOWLEDGE_RELS
-# (stagecraft-worker) — api and worker are separate packages, so this is
-# duplicated rather than shared, but it must stay in sync with both.
 _REL_TYPE_TO_EDGE_TYPE = {
     "NEEDS": "needs",
     "NEEDS_OUTPUT": "needs_output",
@@ -68,7 +56,6 @@ _REL_TYPE_TO_EDGE_TYPE = {
     "MEASURED_BY": "measured_by",
 }
 
-
 def _neo4j_node_to_response(n) -> GraphNodeResponse:
     return GraphNodeResponse(
         id=uuid.UUID(n["id"]),
@@ -80,7 +67,6 @@ def _neo4j_node_to_response(n) -> GraphNodeResponse:
         node_metadata=json.loads(n["metadata_json"]) if n.get("metadata_json") else None,
     )
 
-
 def _neo4j_edge_to_response(e, source_id: str, target_id: str) -> GraphEdgeResponse:
     return GraphEdgeResponse(
         id=uuid.UUID(e["id"]),
@@ -91,34 +77,9 @@ def _neo4j_edge_to_response(e, source_id: str, target_id: str) -> GraphEdgeRespo
         edge_metadata=json.loads(e["metadata_json"]) if e.get("metadata_json") else None,
     )
 
-
 async def _fetch_from_neo4j(
     org_login: str, repo_name: str | None, graph_type: str
 ) -> tuple[list[GraphNodeResponse], list[GraphEdgeResponse]]:
-    """Read nodes/edges straight from Neo4j instead of graph_nodes/graph_edges.
-
-    Edges are filtered by an org_login/repo_name (or org_login-only, for
-    knowledge) property tagged on the edge itself at write time — not by
-    which nodes they touch. Nodes are shared/global in Neo4j (no graph_id
-    partitioning), so an orchestrator.yaml-derived edge between two org-wide
-    Service nodes touches neither repo-scoped Workflow/Job node; only the
-    edge's own tag identifies which repo's build produced it.
-
-    Fetches the graph_type's "primary" node set, then any additional nodes
-    referenced by a matched edge (e.g. a dependency graph's
-    REPOSITORY_DISPATCH edge into an org-wide ExternalRepo node, or a
-    knowledge graph's GOVERNS edge into a Workflow node) — otherwise an
-    edge's endpoint could be missing from `nodes` and the frontend would
-    silently drop the edge, exactly the bug this replaces.
-
-    An org-wide Service/ExternalRepo node (repo_name is always None on these —
-    see graph_builder._ORG_WIDE_DECLARABLE_TYPES) has no edge for the fallback
-    below to traverse into when it has zero edges at all (e.g. an
-    orchestrator.yaml entry with no declared dependencies either way), so the
-    node_query below matches it separately via declared_by_repos — a list of
-    every repo whose build has declared this node, maintained at write time
-    in stagecraft-worker's _write_dependency_subgraph_tx.
-    """
     async with async_neo4j_driver.session() as neo_session:
         if graph_type == "dependency":
             node_query = (
@@ -169,12 +130,10 @@ async def _fetch_from_neo4j(
         all_nodes = {**primary_nodes, **extra_nodes}
         return [_neo4j_node_to_response(n) for n in all_nodes.values()], edge_responses
 
-
 async def _assert_org_connected(db: AsyncSession, org_login: str) -> None:
     result = await db.execute(select(Organization).where(Organization.login == org_login))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
-
 
 @router.post("/{org_login}/repos/{repo_name}/dependency-graph/build", response_model=GraphResponse)
 async def build_dependency_graph(
@@ -184,7 +143,6 @@ async def build_dependency_graph(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> GraphResponse:
-    """Enqueue a dependency-graph build for a repo. Parsing happens in the worker."""
     await _assert_org_connected(db, org_login)
 
     graph = Graph(
@@ -209,7 +167,6 @@ async def build_dependency_graph(
 
     return GraphResponse.model_validate(graph)
 
-
 @router.get("/{org_login}/repos/{repo_name}/dependency-graph", response_model=GraphDetail)
 async def get_latest_dependency_graph(
     org_login: str,
@@ -217,7 +174,6 @@ async def get_latest_dependency_graph(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> GraphDetail:
-    """Return the most recently completed dependency graph for a repo, with nodes/edges."""
     result = await db.execute(
         select(Graph)
         .where(
@@ -247,7 +203,6 @@ async def get_latest_dependency_graph(
         edges=edge_responses,
     )
 
-
 @router.get("/{org_login}/repos/{repo_name}/dependency-graph/history", response_model=GraphList)
 async def get_dependency_graph_history(
     org_login: str,
@@ -255,7 +210,6 @@ async def get_dependency_graph_history(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> GraphList:
-    """List past dependency-graph build attempts for a repo, most recent first."""
     result = await db.execute(
         select(Graph)
         .where(
@@ -269,19 +223,15 @@ async def get_dependency_graph_history(
     graphs = result.scalars().all()
     return GraphList(graphs=[GraphResponse.model_validate(g) for g in graphs], total=len(graphs))
 
-
 @router.post("/{org_login}/knowledge-graph/build")
 async def build_knowledge_graph(
     org_login: str,
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Enqueue a knowledge-graph rebuild — cross-links governance findings, remediation
-    failures, and optimization recommendations onto the org's dependency graph nodes."""
     await _assert_org_connected(db, org_login)
     await _publisher.publish({"event_type": "build_knowledge_graph", "org_login": org_login})
     return {"status": "enqueued", "org_login": org_login}
-
 
 @router.get("/{org_login}/knowledge-graph", response_model=GraphDetail)
 async def get_knowledge_graph(
@@ -289,8 +239,6 @@ async def get_knowledge_graph(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> GraphDetail:
-    """Return the org-wide knowledge graph (governance rules, app requirements,
-    runtime metrics, and failures cross-linked to dependency-graph nodes)."""
     result = await db.execute(
         select(Graph)
         .where(Graph.org_login == org_login, Graph.graph_type == "knowledge")
@@ -307,10 +255,6 @@ async def get_knowledge_graph(
         nodes = list((await db.execute(select(GraphNode).where(GraphNode.graph_id == graph.id))).scalars().all())
         edges = (await db.execute(select(GraphEdge).where(GraphEdge.graph_id == graph.id))).scalars().all()
 
-        # Knowledge-graph edges cross-link to workflow nodes owned by the org's
-        # dependency graph (a different graph_id), so fetch those referenced
-        # nodes too — otherwise an edge's endpoint is missing from `nodes` and
-        # the frontend silently drops the edge.
         own_ids = {n.id for n in nodes}
         referenced_ids = {e.source_node_id for e in edges} | {e.target_node_id for e in edges}
         missing_ids = referenced_ids - own_ids

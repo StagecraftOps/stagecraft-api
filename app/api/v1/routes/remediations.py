@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-
 @router.get("/", response_model=RemediationList)
 async def list_remediations(
     org_login: str | None = Query(default=None, max_length=255),
@@ -31,7 +30,6 @@ async def list_remediations(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> RemediationList:
-    """List remediations with optional filters. Paginated."""
     query = select(Remediation)
     count_query = select(func.count()).select_from(Remediation)
 
@@ -58,18 +56,12 @@ async def list_remediations(
         page_size=page_size,
     )
 
-
 @router.post("/{remediation_id}/mark-helpful", response_model=RemediationDetail)
 async def mark_helpful(
     remediation_id: uuid.UUID,
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> RemediationDetail:
-    """
-    Mark a remediation as helpful (fix accepted and merged by the user).
-    Queues the fix for ingestion into the Bedrock Knowledge Base so future
-    analyses of similar failures benefit from this accepted solution.
-    """
     result = await db.execute(select(Remediation).where(Remediation.id == remediation_id))
     remediation = result.scalar_one_or_none()
     if not remediation:
@@ -112,17 +104,12 @@ async def mark_helpful(
 
     return RemediationDetail.model_validate(remediation)
 
-
 @router.get("/search", response_model=list[RemediationResponse])
 async def search_remediations(
     q: str,
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[RemediationResponse]:
-    """
-    Semantic search over remediation history via Bedrock Knowledge Base + OpenSearch.
-    Falls back to simple text match when Knowledge Base is not configured.
-    """
     from sqlalchemy import or_
 
     result = await db.execute(
@@ -139,7 +126,6 @@ async def search_remediations(
     )
     return [RemediationResponse.model_validate(r) for r in result.scalars().all()]
 
-
 @router.get("/{remediation_id}/similar", response_model=list[RemediationResponse])
 async def get_similar_remediations(
     remediation_id: uuid.UUID,
@@ -147,11 +133,6 @@ async def get_similar_remediations(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[RemediationResponse]:
-    """
-    Feature 4 - Multi-Repo Correlation.
-    Return up to `limit` remediations from OTHER repos that share the same
-    failure_category and a similar root cause.
-    """
     from sqlalchemy import or_
 
     result = await db.execute(select(Remediation).where(Remediation.id == remediation_id))
@@ -178,20 +159,17 @@ async def get_similar_remediations(
     )
     return [RemediationResponse.model_validate(r) for r in similar_result.scalars().all()]
 
-
 @router.get("/{remediation_id}", response_model=RemediationDetail)
 async def get_remediation(
     remediation_id: uuid.UUID,
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> RemediationDetail:
-    """Get a single remediation including suggested_yaml."""
     result = await db.execute(select(Remediation).where(Remediation.id == remediation_id))
     remediation = result.scalar_one_or_none()
     if not remediation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Remediation not found")
     return RemediationDetail.model_validate(remediation)
-
 
 @router.post("/{remediation_id}/raise-pr", response_model=RemediationDetail)
 async def raise_pr(
@@ -199,9 +177,6 @@ async def raise_pr(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> RemediationDetail:
-    """
-    User-triggered PR creation for an analyzed remediation.
-    """
     result = await db.execute(select(Remediation).where(Remediation.id == remediation_id))
     remediation = result.scalar_one_or_none()
     if not remediation:

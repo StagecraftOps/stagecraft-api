@@ -21,15 +21,12 @@ from app.db.base import Base, async_engine
 from app.db.neo4j import async_neo4j_driver
 from app.models import governance, graph, job_run, optimization, organization, pr_review, remediation, standardization, user, workflow_run
 
-# Surface application logs (logger.info/warning/...) to stdout. Without this
-# only uvicorn's access logs appear and app-level warnings vanish.
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
 def _validate_security_config() -> None:
-    """Refuse to boot a production instance with insecure defaults."""
     if settings.is_production and settings.SECRET_KEY == INSECURE_DEFAULT_SECRET:
         raise RuntimeError(
             "SECRET_KEY is set to the insecure development default while "
@@ -38,15 +35,6 @@ def _validate_security_config() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Validate config and start the Redis event listener.
-
-    Schema is NOT created here outside local development. In staging/
-    production, schema changes happen exactly once via the Alembic
-    `alembic upgrade head` Helm pre-upgrade hook job (see stagecraft-helm's
-    templates/migration-job.yaml), which runs to completion before the new
-    Deployment is rolled out. Running create_all() on every pod start would
-    race across replicas and bypass migration history entirely.
-    """
     _validate_security_config()
     if settings.ENVIRONMENT == "development":
         async with async_engine.begin() as conn:
@@ -69,8 +57,7 @@ app = FastAPI(
     version="0.1.0",
     description="AI-powered GitHub Actions remediation platform",
     lifespan=lifespan,
-    # Swagger/ReDoc/OpenAPI schema are dev-only — don't expose the API's
-    # internal shape publicly once deployed to production.
+
     docs_url=None if settings.is_production else "/docs",
     redoc_url=None if settings.is_production else "/redoc",
     openapi_url=None if settings.is_production else "/openapi.json",
@@ -92,24 +79,18 @@ app.include_router(api_router, prefix="/api/v1")
 
 app.include_router(ws_router)
 
-# Service-to-service only (verify_internal_request gates every route here) —
-# not part of the public API surface, no /docs entry, no CORS exposure.
 app.include_router(internal_router, prefix="/internal", tags=["internal"])
 
 @app.get("/health", tags=["health"])
 async def health_check() -> dict:
     return {"status": "ok", "service": "api-service"}
 
-
 @app.get("/health/live", tags=["health"])
 async def liveness() -> dict:
-    """Process is up and serving requests. No dependency checks."""
     return {"status": "ok"}
-
 
 @app.get("/health/ready", tags=["health"])
 async def readiness() -> JSONResponse:
-    """Pod is ready to receive traffic — verifies DB and Redis are reachable."""
     checks: dict[str, str] = {}
 
     try:

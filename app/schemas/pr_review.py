@@ -3,7 +3,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-
 class PRReviewResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -19,7 +18,6 @@ class PRReviewResponse(BaseModel):
     agent_trace: list[str] | None = None
     created_at: datetime
     updated_at: datetime
-
 
 class PRReviewList(BaseModel):
     reviews: list[PRReviewResponse]

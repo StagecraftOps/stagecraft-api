@@ -19,7 +19,7 @@ from app.core.config import INSECURE_DEFAULT_SECRET, settings
 from app.core.limiter import limiter
 from app.db.base import Base, async_engine
 from app.db.neo4j import async_neo4j_driver
-from app.models import agent_run, application_context, governance, graph, job_run, optimization, organization, pr_review, remediation, standardization, user, workflow_run
+from app.models import agent_run, application_context, governance, graph, job_run, optimization, organization, pr_review, remediation, standardization, user, vulnerability_finding, workflow_run
 
 logging.basicConfig(
     level=logging.INFO,

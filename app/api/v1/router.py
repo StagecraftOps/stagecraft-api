@@ -16,6 +16,7 @@ from app.api.v1.routes import (
     remediations,
     runs,
     standardization,
+    vulnerabilities,
     workflows,
 )
 
@@ -37,3 +38,4 @@ api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(agent_runs.router, prefix="/agent-runs", tags=["agent-runs"])
 api_router.include_router(application_contexts.router, prefix="/application-contexts", tags=["application-contexts"])
 api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
+api_router.include_router(vulnerabilities.router, prefix="/vulnerabilities", tags=["vulnerabilities"])

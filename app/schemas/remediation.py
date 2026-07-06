@@ -22,6 +22,7 @@ class RemediationResponse(RemediationBase):
     id: uuid.UUID
     workflow_run_id: uuid.UUID
     suggested_yaml: str | None = None
+    original_yaml: str | None = None
     pr_url: str | None = None
     pr_number: int | None = None
     pr_branch: str | None = None

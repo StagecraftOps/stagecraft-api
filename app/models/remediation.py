@@ -25,6 +25,7 @@ class Remediation(Base):
     root_cause: Mapped[str] = mapped_column(Text, nullable=False)
     fixed_yaml: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     suggested_yaml: Mapped[str | None] = mapped_column(Text, nullable=True)
+    original_yaml: Mapped[str | None] = mapped_column(Text, nullable=True)
     pr_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     pr_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     pr_branch: Mapped[str | None] = mapped_column(String(512), nullable=True)

@@ -15,8 +15,16 @@ from app.schemas.agent_run import (
     AgentRunResponse,
     AgentSummary,
 )
+from app.services.sqs_publisher import SQSPublisher
 
 router = APIRouter()
+
+_publisher = SQSPublisher()
+
+_TRIGGERABLE = {
+    "drift_detector": "run_drift_detection",
+    "compliance_watchdog": "run_compliance_watchdog",
+}
 
 KNOWN_AGENTS = [
     "failure_rca",
@@ -41,6 +49,28 @@ async def report_agent_run(
     await db.commit()
     await db.refresh(run)
     return AgentRunResponse.model_validate(run)
+
+@router.post("/{agent_name}/trigger")
+async def trigger_agent(
+    agent_name: str,
+    org_login: str = Query(..., max_length=255),
+    repo_name: str = Query(..., max_length=255),
+    ref: str = Query(default="main", max_length=255),
+    _user: User = Depends(get_current_user),
+) -> dict:
+    event_type = _TRIGGERABLE.get(agent_name)
+    if not event_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Agent '{agent_name}' cannot be triggered on demand.",
+        )
+    await _publisher.publish({
+        "event_type": event_type,
+        "org_login": org_login,
+        "repo_name": repo_name,
+        "ref": ref,
+    })
+    return {"status": "enqueued", "agent_name": agent_name, "org_login": org_login, "repo_name": repo_name}
 
 @router.get("/summary", response_model=AgentFleetSummary)
 async def agent_fleet_summary(

@@ -158,15 +158,40 @@ _WORKFLOW_MATCH_CLAUSE = (
 )
 
 _GRAPH_QUERIES = {
+    # NEEDS/NEEDS_OUTPUT/USES_REUSABLE/USES_COMPOSITE are never anchored on
+    # the Workflow node itself -- they're job-level (a job needs another job,
+    # or a job calls a reusable workflow/composite action), always sourced
+    # from a :Job node with workflow_file = w.workflow_file. A Workflow node's
+    # only outgoing edge type is WORKFLOW_RUN_TRIGGER. Anchoring this query
+    # directly on (w)-[...]->(dep) (the original design) could therefore
+    # NEVER return a result for any workflow -- verified live: a real
+    # question about a workflow with a real, populated NEEDS/USES_REUSABLE
+    # chain (confirmed via direct Cypher) still came back empty through this
+    # endpoint before this fix.
     "depends_on": (
         _WORKFLOW_MATCH_CLAUSE
-        + "MATCH (w)-[:NEEDS|NEEDS_OUTPUT|USES_REUSABLE|USES_COMPOSITE]->(dep:GraphNode) "
+        + "MATCH (j:GraphNode:Job {workflow_file: w.workflow_file})"
+        "-[:NEEDS|NEEDS_OUTPUT|USES_REUSABLE|USES_COMPOSITE]->(dep:GraphNode) "
         "RETURN DISTINCT dep.display_name AS name"
     ),
+    # Mirror of the above: NEEDS is always same-workflow job-to-job (GHA
+    # forbids cross-workflow needs:), and REPOSITORY_DISPATCH always targets
+    # an ExternalRepo placeholder (dispatch_detector.py), never resolves
+    # back into a real Workflow node -- both are dropped here since they can
+    # never match a Workflow anchor either. USES_REUSABLE/USES_COMPOSITE
+    # incoming IS reachable: a local `uses: ./this-workflow.yml` reference
+    # bridges to this exact Workflow node (see workflow_parser.py's
+    # bridging fix). WORKFLOW_RUN_TRIGGER's edge direction is
+    # source=triggering workflow -> target=triggered workflow, so "what
+    # depends on w" (things that run because of w) is the OUTGOING
+    # direction here, not incoming.
     "depended_on_by": (
         _WORKFLOW_MATCH_CLAUSE
-        + "MATCH (w)<-[:NEEDS|USES_REUSABLE|USES_COMPOSITE|WORKFLOW_RUN_TRIGGER|REPOSITORY_DISPATCH]-(dep:GraphNode) "
-        "RETURN DISTINCT dep.display_name AS name"
+        + "OPTIONAL MATCH (w)-[:WORKFLOW_RUN_TRIGGER]->(triggered:GraphNode) "
+        "OPTIONAL MATCH (w)<-[:USES_REUSABLE|USES_COMPOSITE]-(caller:GraphNode) "
+        "WITH collect(DISTINCT triggered.display_name) + collect(DISTINCT caller.display_name) AS names "
+        "UNWIND names AS name "
+        "RETURN DISTINCT name"
     ),
     "governance": (
         _WORKFLOW_MATCH_CLAUSE

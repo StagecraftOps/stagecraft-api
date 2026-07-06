@@ -33,6 +33,12 @@ _publisher = SQSPublisher()
 _DEPENDENCY_NODE_TYPES = ["workflow", "job", "reusable_workflow", "composite_action"]
 _KNOWLEDGE_NODE_TYPES = ["governance_rule", "failure", "runtime_metric"]
 
+# Reverse of graph_builder._ORG_WIDE_DECLARABLE_TYPES (stagecraft-worker) —
+# org-wide node types with no repo_name of their own, resolved per-repo via
+# the declared_by_repos list property instead. Kept in sync manually, same
+# as _REL_TYPE_TO_EDGE_TYPE below.
+_ORG_WIDE_DECLARABLE_TYPES = ["service", "external_repo"]
+
 # Nodes are shared/global in Neo4j (no graph_id partitioning) — a Workflow
 # node is referenced by both dependency-graph edges (NEEDS, USES_*) and
 # knowledge-graph edges (GOVERNS). Filtering "any edge touching a primary
@@ -105,20 +111,26 @@ async def _fetch_from_neo4j(
     edge's endpoint could be missing from `nodes` and the frontend would
     silently drop the edge, exactly the bug this replaces.
 
-    Known gap (verified live, not fixed — narrow enough to defer): an
-    org-wide Service/ExternalRepo node with zero edges at all (e.g. an
-    orchestrator.yaml entry with no declared dependencies either way) is
-    never picked up as an "extra node" here, since that logic only follows
-    edges. It simply won't appear in the dependency graph view. Postgres
-    doesn't have this gap (it inserts every parsed node unconditionally).
+    An org-wide Service/ExternalRepo node (repo_name is always None on these —
+    see graph_builder._ORG_WIDE_DECLARABLE_TYPES) has no edge for the fallback
+    below to traverse into when it has zero edges at all (e.g. an
+    orchestrator.yaml entry with no declared dependencies either way), so the
+    node_query below matches it separately via declared_by_repos — a list of
+    every repo whose build has declared this node, maintained at write time
+    in stagecraft-worker's _write_dependency_subgraph_tx.
     """
     async with async_neo4j_driver.session() as neo_session:
         if graph_type == "dependency":
             node_query = (
-                "MATCH (n:GraphNode {org_login: $org, repo_name: $repo}) "
-                "WHERE n.node_type IN $types RETURN n"
+                "MATCH (n:GraphNode {org_login: $org}) "
+                "WHERE (n.repo_name = $repo AND n.node_type IN $types) "
+                "   OR ($repo IN coalesce(n.declared_by_repos, []) AND n.node_type IN $org_wide_types) "
+                "RETURN n"
             )
-            params = {"org": org_login, "repo": repo_name, "types": _DEPENDENCY_NODE_TYPES}
+            params = {
+                "org": org_login, "repo": repo_name,
+                "types": _DEPENDENCY_NODE_TYPES, "org_wide_types": _ORG_WIDE_DECLARABLE_TYPES,
+            }
             edge_query = (
                 "MATCH (s:GraphNode)-[e]->(t:GraphNode) "
                 "WHERE e.org_login = $org AND e.repo_name = $repo AND type(e) IN $rel_types "

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.routes import (
+    agent_runs,
     analytics,
     auth,
     chat,
@@ -31,3 +32,4 @@ api_router.include_router(remediations.router, prefix="/remediations", tags=["re
 api_router.include_router(pr_reviews.router, prefix="/pr-reviews", tags=["pr-reviews"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
+api_router.include_router(agent_runs.router, prefix="/agent-runs", tags=["agent-runs"])

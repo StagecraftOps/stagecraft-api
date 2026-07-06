@@ -139,32 +139,50 @@ async def search_remediations(
     )
 
 
+_MAX_WORKFLOW_MATCHES = 5
+
+# Anchor clause shared by every relationship below: the LLM calling this only
+# has whatever colloquial name the user typed ("ci-auth-service"), never the
+# exact workflow_file path (".github/workflows/ci-auth-service.yml") or
+# necessarily the exact repo_name -- an exact-equality match against those
+# was a real dead end (verified live: a real question returned zero results
+# because the model's guess didn't match either field byte-for-byte). Fuzzy
+# CONTAINS against both workflow_file and display_name, repo optional,
+# capped at _MAX_WORKFLOW_MATCHES matching workflows so an over-broad term
+# doesn't silently aggregate half the org's dependency graph into one answer.
+_WORKFLOW_MATCH_CLAUSE = (
+    "MATCH (w:GraphNode:Workflow) "
+    "WHERE ($repo IS NULL OR toLower(w.repo_name) = toLower($repo)) "
+    "AND (toLower(w.workflow_file) CONTAINS toLower($wf) OR toLower(w.display_name) CONTAINS toLower($wf)) "
+    "WITH w LIMIT $max_matches "
+)
+
 _GRAPH_QUERIES = {
     "depends_on": (
-        "MATCH (n:GraphNode {repo_name: $repo, workflow_file: $wf})"
-        "-[:NEEDS|NEEDS_OUTPUT|USES_REUSABLE|USES_COMPOSITE]->(dep:GraphNode) "
+        _WORKFLOW_MATCH_CLAUSE
+        + "MATCH (w)-[:NEEDS|NEEDS_OUTPUT|USES_REUSABLE|USES_COMPOSITE]->(dep:GraphNode) "
         "RETURN DISTINCT dep.display_name AS name"
     ),
     "depended_on_by": (
-        "MATCH (n:GraphNode {repo_name: $repo, workflow_file: $wf})"
-        "<-[:NEEDS|USES_REUSABLE|USES_COMPOSITE|WORKFLOW_RUN_TRIGGER|REPOSITORY_DISPATCH]-(dep:GraphNode) "
+        _WORKFLOW_MATCH_CLAUSE
+        + "MATCH (w)<-[:NEEDS|USES_REUSABLE|USES_COMPOSITE|WORKFLOW_RUN_TRIGGER|REPOSITORY_DISPATCH]-(dep:GraphNode) "
         "RETURN DISTINCT dep.display_name AS name"
     ),
     "governance": (
-        "MATCH (rule:GraphNode:GovernanceRule)-[:GOVERNS]->"
-        "(w:GraphNode:Workflow {repo_name: $repo, workflow_file: $wf}) "
+        _WORKFLOW_MATCH_CLAUSE
+        + "MATCH (rule:GraphNode:GovernanceRule)-[:GOVERNS]->(w) "
         "RETURN DISTINCT rule.display_name AS name"
     ),
     "failures": (
-        "MATCH (fail:GraphNode:Failure)-[:CAUSED_BY]->"
-        "(w:GraphNode:Workflow {repo_name: $repo, workflow_file: $wf}) "
+        _WORKFLOW_MATCH_CLAUSE
+        + "MATCH (fail:GraphNode:Failure)-[:CAUSED_BY]->(w) "
         "RETURN DISTINCT fail.display_name AS name"
     ),
 }
 
 
 class GraphQueryRequest(BaseModel):
-    repo_name: str
+    repo_name: str | None = None
     workflow_file: str
     relationship: str = Field(default="depends_on")
 
@@ -186,6 +204,11 @@ async def query_graph(
     it. 'governance': governance rules already linked to it. 'failures':
     failure history connected to it. Deliberately a fixed lookup, not
     free-form Cypher, even though the caller is a trusted internal service.
+
+    workflow_file is matched fuzzily (case-insensitive substring against
+    both workflow_file and display_name) and repo_name is optional -- the
+    caller only ever has a colloquial name to work with, never necessarily
+    the exact repo-root-relative path.
     """
     cypher = _GRAPH_QUERIES.get(req.relationship)
     if not cypher:
@@ -195,7 +218,9 @@ async def query_graph(
         )
 
     async with async_neo4j_driver.session() as neo_session:
-        result = await neo_session.run(cypher, repo=req.repo_name, wf=req.workflow_file)
+        result = await neo_session.run(
+            cypher, repo=req.repo_name, wf=req.workflow_file, max_matches=_MAX_WORKFLOW_MATCHES,
+        )
         items = [record["name"] async for record in result if record["name"]]
 
     return GraphQueryResponse(relationship=req.relationship, items=items)

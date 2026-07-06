@@ -25,6 +25,8 @@ class JobRun(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     runner_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    runner_labels: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    runner_group_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

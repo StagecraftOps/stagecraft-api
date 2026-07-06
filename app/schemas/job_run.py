@@ -17,6 +17,8 @@ class JobRunResponse(BaseModel):
     completed_at: datetime | None = None
     duration_seconds: int | None = None
     runner_name: str | None = None
+    runner_labels: list[str] | None = None
+    runner_group_name: str | None = None
 
 
 class JobRunList(BaseModel):
@@ -46,3 +48,11 @@ class LongestWorkflowEntry(BaseModel):
     repo_name: str
     workflow_run_id: uuid.UUID
     duration_seconds: int
+
+
+class RunnerBreakdownEntry(BaseModel):
+    # None means no runner was ever assigned (job still queued or cancelled
+    # before pickup) -- a real, distinct bucket, not missing data.
+    runner_labels: list[str] | None
+    job_count: int
+    avg_duration_seconds: float | None

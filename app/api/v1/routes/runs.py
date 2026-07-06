@@ -20,12 +20,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-
 async def _visible_org_logins(db: AsyncSession) -> list[str]:
-    """All connected org logins — runs are platform-wide, not per-user."""
     result = await db.execute(select(Organization.login))
     return list(result.scalars().all())
-
 
 @router.get("/", response_model=WorkflowRunList)
 async def list_recent_runs(
@@ -38,11 +35,6 @@ async def list_recent_runs(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WorkflowRunList:
-    """List persisted workflow runs with optional filters and pagination.
-
-    Always scoped to organizations the current user has connected — runs
-    belonging to other users' orgs must never be returned here.
-    """
     visible_logins = await _visible_org_logins(db)
     if not visible_logins:
         return WorkflowRunList(runs=[], total=0)
@@ -78,9 +70,7 @@ async def list_recent_runs(
         total=total,
     )
 
-
 async def _get_org_owner_token(db: AsyncSession, org_login: str) -> str:
-    """Return the encrypted GitHub token of the user who connected this org."""
     result = await db.execute(
         select(User).join(Organization, Organization.owner_id == User.id)
         .where(Organization.login == org_login)
@@ -90,20 +80,17 @@ async def _get_org_owner_token(db: AsyncSession, org_login: str) -> str:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
     return owner.access_token_encrypted
 
-
 @router.get("/{run_id}")
 async def get_run(
     run_id: uuid.UUID,
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Get a workflow run by its database UUID."""
     result = await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
     db_run = result.scalar_one_or_none()
     if not db_run:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
     return WorkflowRunResponse.model_validate(db_run).model_dump()
-
 
 @router.get("/{run_id}/logs")
 async def get_run_logs(
@@ -111,7 +98,6 @@ async def get_run_logs(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Return the scrubbed log text for a workflow run (fetched live from GitHub)."""
     from app.core.scrubber import scrub
 
     result = await db.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
@@ -119,7 +105,6 @@ async def get_run_logs(
     if not db_run:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
-    # Use the org owner's token so any logged-in user can fetch logs.
     enc_token = await _get_org_owner_token(db, db_run.org_login)
     github = GitHubService(decrypt_token(enc_token))
     try:
@@ -136,20 +121,17 @@ async def get_run_logs(
     finally:
         await github.aclose()
 
-
 @router.get("/{run_id}/jobs", response_model=JobRunList)
 async def get_run_jobs(
     run_id: uuid.UUID,
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> JobRunList:
-    """Per-job timing for a run (populated by stagecraft-worker's job_timing task)."""
     result = await db.execute(
         select(JobRun).where(JobRun.workflow_run_id == run_id).order_by(JobRun.started_at)
     )
     jobs = result.scalars().all()
     return JobRunList(jobs=[JobRunResponse.model_validate(j) for j in jobs])
-
 
 @router.get("/{run_id}/critical-path", response_model=CriticalPathResponse)
 async def get_run_critical_path(
@@ -157,7 +139,6 @@ async def get_run_critical_path(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> CriticalPathResponse:
-    """Deterministic longest-path computation over the run's job dependency graph."""
     result = await db.execute(
         select(CriticalPathResult).where(CriticalPathResult.workflow_run_id == run_id)
     )

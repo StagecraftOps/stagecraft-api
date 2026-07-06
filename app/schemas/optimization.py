@@ -3,7 +3,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-
 class OptimizationRecommendationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -22,10 +21,8 @@ class OptimizationRecommendationResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-
 class OptimizationRecommendationList(BaseModel):
     recommendations: list[OptimizationRecommendationResponse]
-
 
 class SimulationRunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -36,7 +33,6 @@ class SimulationRunResponse(BaseModel):
     simulated_critical_path_seconds: int
     delta_seconds: int
     computed_at: datetime
-
 
 class OptimizationAnalyzeRequest(BaseModel):
     workflow_file: str

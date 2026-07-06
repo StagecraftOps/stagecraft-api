@@ -7,9 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-
 class FixMemory(Base):
-    """Stores accepted AI fixes so future remediations can learn from them (RAG)."""
 
     __tablename__ = "fix_memories"
 

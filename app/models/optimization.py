@@ -7,11 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-
 class OptimizationRecommendation(Base):
-    """FR-7/FR-8: a single ranked optimization recommendation for a workflow,
-    produced by the Performance Optimization Agent from deterministic
-    bottleneck/parallelization findings."""
     __tablename__ = "optimization_recommendations"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -23,7 +19,7 @@ class OptimizationRecommendation(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     proposed_yaml_diff: Mapped[str | None] = mapped_column(Text, nullable=True)
     estimated_time_savings_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    confidence_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0-100
+    confidence_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="proposed")
     agent_trace: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -31,10 +27,7 @@ class OptimizationRecommendation(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
-
 class SimulationRun(Base):
-    """FR-9: before/after critical-path comparison for one recommendation —
-    pure recomputation, not AI-generated."""
     __tablename__ = "simulation_runs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

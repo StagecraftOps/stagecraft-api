@@ -12,7 +12,6 @@ from app.schemas.pr_review import PRReviewList, PRReviewResponse
 
 router = APIRouter()
 
-
 @router.get("/", response_model=PRReviewList)
 async def list_pr_reviews(
     org_login: str | None = Query(default=None, max_length=255),
@@ -39,7 +38,6 @@ async def list_pr_reviews(
     reviews = result.scalars().all()
 
     return PRReviewList(reviews=[PRReviewResponse.model_validate(r) for r in reviews], total=total)
-
 
 @router.get("/{review_id}", response_model=PRReviewResponse)
 async def get_pr_review(

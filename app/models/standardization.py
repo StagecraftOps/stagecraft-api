@@ -7,10 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-
 class WorkflowTemplate(Base):
-    """An org's approved standard workflow template, used as the diff target
-    for FR-3 (missing required components) analysis."""
     __tablename__ = "workflow_templates"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -27,9 +24,7 @@ class WorkflowTemplate(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
-
 class TemplateDiff(Base):
-    """FR-3: structural diff of one workflow file against an approved template."""
     __tablename__ = "template_diffs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -40,13 +35,10 @@ class TemplateDiff(Base):
         UUID(as_uuid=True), ForeignKey("workflow_templates.id", ondelete="CASCADE"), nullable=False
     )
     diff_summary: Mapped[dict] = mapped_column(JSONB(), nullable=False)
-    adoption_score: Mapped[int] = mapped_column(Integer, nullable=False)  # 0-100
+    adoption_score: Mapped[int] = mapped_column(Integer, nullable=False)
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-
 class PatternCluster(Base):
-    """FR-4: a step/job pattern repeated across multiple workflows in an org —
-    a candidate to extract into a shared reusable template component."""
     __tablename__ = "pattern_clusters"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

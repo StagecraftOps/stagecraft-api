@@ -19,13 +19,11 @@ router = APIRouter()
 
 _publisher = SQSPublisher()
 
-
 @router.get("/", response_model=OrganizationList)
 async def list_orgs(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> OrganizationList:
-    """List all connected organizations (platform-wide view)."""
     result = await db.execute(select(Organization))
     orgs = result.scalars().all()
     return OrganizationList(
@@ -33,16 +31,10 @@ async def list_orgs(
         total=len(orgs),
     )
 
-
 @router.get("/install")
 async def install_app(
     user: User = Depends(get_current_user),
 ) -> RedirectResponse:
-    """Redirect user to install the GitHub App on their org.
-
-    After installation GitHub fires an 'installation' event to the webhook
-    service, which auto-registers the org — no manual connect step needed.
-    """
     if not settings.GITHUB_APP_SLUG:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -52,18 +44,12 @@ async def install_app(
         url=f"https://github.com/apps/{settings.GITHUB_APP_SLUG}/installations/new"
     )
 
-
 @router.delete("/{org_login}", status_code=status.HTTP_204_NO_CONTENT)
 async def disconnect_org(
     org_login: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """Remove an org from DB.
-
-    The GitHub App 'installation' deleted event handles this automatically
-    when a user uninstalls via GitHub. This endpoint is for manual cleanup.
-    """
     result = await db.execute(
         select(Organization).where(
             Organization.login == org_login, Organization.owner_id == user.id

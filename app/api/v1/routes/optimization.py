@@ -20,7 +20,6 @@ router = APIRouter()
 
 _publisher = SQSPublisher()
 
-
 @router.post("/orgs/{org_login}/repos/{repo_name}/optimization/analyze")
 async def analyze_optimization(
     org_login: str,
@@ -29,8 +28,6 @@ async def analyze_optimization(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Enqueue bottleneck/parallelization analysis for one workflow file.
-    Requires a completed dependency graph (FR-1) and job timing data (FR-2)."""
     await _publisher.publish({
         "event_type": "run_optimization_analysis",
         "org_login": org_login,
@@ -39,7 +36,6 @@ async def analyze_optimization(
         "ref": body.ref,
     })
     return {"status": "enqueued", "org_login": org_login, "repo_name": repo_name}
-
 
 @router.get("/orgs/{org_login}/repos/{repo_name}/optimization/recommendations", response_model=OptimizationRecommendationList)
 async def list_recommendations(
@@ -58,7 +54,6 @@ async def list_recommendations(
         recommendations=[OptimizationRecommendationResponse.model_validate(r) for r in recs]
     )
 
-
 @router.get("/optimization/recommendations/{recommendation_id}/simulation", response_model=SimulationRunResponse)
 async def get_simulation(
     recommendation_id: uuid.UUID,
@@ -72,7 +67,6 @@ async def get_simulation(
     if not sim:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Simulation not found")
     return SimulationRunResponse.model_validate(sim)
-
 
 @router.post("/optimization/recommendations/{recommendation_id}/accept", response_model=OptimizationRecommendationResponse)
 async def accept_recommendation(
@@ -90,7 +84,6 @@ async def accept_recommendation(
     await db.commit()
     await db.refresh(rec)
     return OptimizationRecommendationResponse.model_validate(rec)
-
 
 @router.post("/optimization/recommendations/{recommendation_id}/reject", response_model=OptimizationRecommendationResponse)
 async def reject_recommendation(

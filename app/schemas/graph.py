@@ -3,7 +3,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-
 class GraphNodeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -15,7 +14,6 @@ class GraphNodeResponse(BaseModel):
     job_id: str | None = None
     node_metadata: dict | None = None
 
-
 class GraphEdgeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -25,7 +23,6 @@ class GraphEdgeResponse(BaseModel):
     edge_type: str
     confidence: str
     edge_metadata: dict | None = None
-
 
 class GraphResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -42,16 +39,13 @@ class GraphResponse(BaseModel):
     built_at: datetime | None = None
     created_at: datetime
 
-
 class GraphDetail(GraphResponse):
     nodes: list[GraphNodeResponse]
     edges: list[GraphEdgeResponse]
 
-
 class GraphList(BaseModel):
     graphs: list[GraphResponse]
     total: int
-
 
 class GraphBuildRequest(BaseModel):
     ref: str = "main"

@@ -1,11 +1,3 @@
-"""Redis pub/sub listener that relays worker events to WebSocket clients.
-
-The remediation-worker publishes events (run_update, remediation_created,
-remediation_updated) to the Redis channel ``stagecraft:events`` after each DB
-commit. This background task subscribes to that channel and calls
-``manager.broadcast()`` so connected dashboard clients receive live updates
-without polling.
-"""
 import asyncio
 import json
 import logging
@@ -20,12 +12,6 @@ logger = logging.getLogger(__name__)
 REDIS_CHANNEL = "stagecraft:events"
 
 def _make_redis(decode_responses: bool = False) -> Redis:
-    """Build a Redis client that handles ElastiCache TLS correctly.
-
-    redis-py 5.x does not parse ssl_cert_reqs from the URL query string.
-    The only working path for CERT_NONE is ConnectionPool.from_url with
-    connection_class=SSLConnection and ssl_cert_reqs='none' as a kwarg.
-    """
     from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
     from redis.asyncio.connection import ConnectionPool, SSLConnection
 
@@ -47,9 +33,7 @@ def _make_redis(decode_responses: bool = False) -> Redis:
 
     return Redis(connection_pool=pool)
 
-
 async def redis_event_listener() -> None:
-    """Subscribe to the stagecraft:events Redis channel and broadcast to WS clients."""
     while True:
         try:
             redis = _make_redis(decode_responses=True)

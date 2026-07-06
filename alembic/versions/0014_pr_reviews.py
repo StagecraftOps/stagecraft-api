@@ -1,9 +1,3 @@
-"""Add pr_reviews table (FR-12a Peer Review Agent)
-
-Revision ID: 0014
-Revises: 0013
-Create Date: 2026-07-03
-"""
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
@@ -12,7 +6,6 @@ revision = '0014'
 down_revision = '0013'
 branch_labels = None
 depends_on = None
-
 
 def upgrade() -> None:
     op.create_table(
@@ -33,7 +26,6 @@ def upgrade() -> None:
     op.create_index('ix_pr_reviews_org_login', 'pr_reviews', ['org_login'])
     op.create_index('ix_pr_reviews_repo_name', 'pr_reviews', ['repo_name'])
     op.create_index('ix_pr_reviews_status', 'pr_reviews', ['status'])
-
 
 def downgrade() -> None:
     op.drop_index('ix_pr_reviews_status', table_name='pr_reviews')

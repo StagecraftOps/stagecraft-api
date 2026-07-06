@@ -4,9 +4,7 @@ from typing import Any
 
 import httpx
 
-
 class GitHubService:
-    """Async GitHub API client for a single authenticated user token."""
 
     BASE_URL = "https://api.github.com"
 
@@ -37,15 +35,12 @@ class GitHubService:
         response.raise_for_status()
 
     async def get_authenticated_user(self) -> dict:
-        """Return the authenticated user's profile."""
         return await self._get("/user")
 
     async def get_user_orgs(self) -> list[dict]:
-        """Return all organizations the authenticated user belongs to."""
         return await self._get("/user/orgs", params={"per_page": 100})
 
     async def get_org_repos(self, org: str, per_page: int = 100) -> list[dict]:
-        """Return all repositories for an organization, handling pagination."""
         repos: list[dict] = []
         page = 1
         while True:
@@ -62,10 +57,6 @@ class GitHubService:
         return repos
 
     async def get_installation_repos(self, per_page: int = 100) -> list[dict]:
-        """Return all repositories accessible to the App installation this token
-        belongs to. Use with a GitHub App installation token (ghs_...) — unlike
-        /orgs/{org}/repos (which needs a user/org token), this works with the
-        App's own credentials and doesn't depend on any user's OAuth session."""
         repos: list[dict] = []
         page = 1
         while True:
@@ -83,7 +74,6 @@ class GitHubService:
         return repos
 
     async def get_repo_workflows(self, owner: str, repo: str) -> list[dict]:
-        """Return all workflows defined in a repository."""
         data = await self._get(f"/repos/{owner}/{repo}/actions/workflows")
         return data.get("workflows", [])
 
@@ -94,7 +84,6 @@ class GitHubService:
         workflow_id: int,
         per_page: int = 30,
     ) -> list[dict]:
-        """Return recent runs for a specific workflow."""
         data = await self._get(
             f"/repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs",
             params={"per_page": per_page},
@@ -102,7 +91,6 @@ class GitHubService:
         return data.get("workflow_runs", [])
 
     async def get_run_logs_url(self, owner: str, repo: str, run_id: int) -> str:
-        """Return the redirect URL for downloading a run's log archive."""
         response = await self._client.get(
             f"/repos/{owner}/{repo}/actions/runs/{run_id}/logs",
             follow_redirects=False,
@@ -115,8 +103,6 @@ class GitHubService:
     async def get_run_logs_text(
         self, owner: str, repo: str, run_id: int, max_lines: int = 1000
     ) -> str:
-        """Download the run's log archive (zip), extract all .txt logs, and
-        return the concatenated text (last max_lines lines)."""
         import io
         import zipfile
 
@@ -144,7 +130,6 @@ class GitHubService:
     async def get_workflow_file(
         self, owner: str, repo: str, path: str, ref: str
     ) -> str:
-        """Return the raw YAML content of a workflow file."""
         response = await self._client.get(
             f"/repos/{owner}/{repo}/contents/{path}",
             params={"ref": ref},
@@ -158,7 +143,6 @@ class GitHubService:
         return response.text
 
     async def get_file_sha(self, owner: str, repo: str, path: str, ref: str) -> str | None:
-        """Return the blob SHA of a file at the given ref, or None if not found."""
         try:
             data = await self._get(f"/repos/{owner}/{repo}/contents/{path}", params={"ref": ref})
             if isinstance(data, dict):
@@ -170,12 +154,6 @@ class GitHubService:
             raise
 
     async def create_fix_branch(self, owner: str, repo: str, base_sha: str, branch_name: str) -> None:
-        """Create a new branch from base_sha.
-
-        Idempotent: if the branch already exists (e.g. left over from a prior
-        Raise PR attempt that failed downstream), reset it to base_sha instead
-        of erroring — a retry must not require the user to delete state first.
-        """
         try:
             await self._post(
                 f"/repos/{owner}/{repo}/git/refs",
@@ -201,13 +179,6 @@ class GitHubService:
         message: str,
         current_sha: str | None,
     ) -> None:
-        """Create or update a workflow file with the suggested YAML fix.
-
-        Retries on 404: the Contents API can briefly lag behind a branch just
-        created/force-updated via the Git Data API (create_fix_branch runs
-        immediately before this), so an immediate PUT sometimes 404s before
-        GitHub's internal state catches up.
-        """
         encoded = base64.b64encode(content.encode()).decode()
         payload: dict = {"message": message, "content": encoded, "branch": branch}
         if current_sha:
@@ -225,7 +196,6 @@ class GitHubService:
     async def create_pr(
         self, owner: str, repo: str, head: str, base: str, title: str, body: str
     ) -> dict:
-        """Open a pull request and return the PR object."""
         return await self._post(
             f"/repos/{owner}/{repo}/pulls",
             json={
@@ -238,7 +208,6 @@ class GitHubService:
         )
 
     async def create_webhook(self, org: str, secret: str, url: str) -> dict:
-        """Create an organization webhook for workflow_run events."""
         return await self._post(
             f"/orgs/{org}/hooks",
             json={
@@ -255,7 +224,6 @@ class GitHubService:
         )
 
     async def delete_webhook(self, org: str, hook_id: int) -> None:
-        """Remove an organization webhook."""
         await self._delete(f"/orgs/{org}/hooks/{hook_id}")
 
     async def aclose(self) -> None:

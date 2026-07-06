@@ -1,9 +1,3 @@
-"""Add governance_documents/compliance_findings tables (FR-5/FR-6)
-
-Revision ID: 0015
-Revises: 0014
-Create Date: 2026-07-03
-"""
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -12,7 +6,6 @@ revision = '0015'
 down_revision = '0014'
 branch_labels = None
 depends_on = None
-
 
 def upgrade() -> None:
     op.create_table(
@@ -46,7 +39,6 @@ def upgrade() -> None:
     )
     op.create_index('ix_compliance_findings_org_login', 'compliance_findings', ['org_login'])
     op.create_index('ix_compliance_findings_repo_name', 'compliance_findings', ['repo_name'])
-
 
 def downgrade() -> None:
     op.drop_index('ix_compliance_findings_repo_name', table_name='compliance_findings')

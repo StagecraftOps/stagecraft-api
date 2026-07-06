@@ -1,16 +1,3 @@
-"""Pipeline Chat — count answers from SQL, everything else from the Investigator Agent.
-
-POST /api/v1/chat
-A cheap Claude call first classifies the question as `count` (a literal
-counting/ranking question over workflow_runs) or `investigate` (anything
-else). `count` answers directly from a SQL GROUP BY. `investigate` hands off
-to stagecraft-worker's Investigator Agent via HTTP — a bounded tool-calling loop
-that searches remediation history and reasons across multiple past runs.
-
-Conversation history is persisted in the chat_messages table so it survives
-page refreshes. Each request loads the last 20 turns for the user and sends
-them to the investigator so follow-up questions have context.
-"""
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -30,10 +17,8 @@ router = APIRouter()
 
 _HISTORY_LIMIT = 20
 
-
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=3, max_length=500)
-
 
 class ChatResponse(BaseModel):
     answer: str
@@ -41,15 +26,12 @@ class ChatResponse(BaseModel):
     data: list[dict] | None = None
     error: str | None = None
 
-
 class HistoryMessage(BaseModel):
     role: str
     content: str
 
-
 class ChatHistoryResponse(BaseModel):
     messages: list[HistoryMessage]
-
 
 _INTENT_PROMPT = """Classify the question below into exactly one category:
 
@@ -61,7 +43,6 @@ recurring patterns, or anything needing more than a single number.
 QUESTION: {question}
 
 Respond with exactly one word: COUNT or INVESTIGATE"""
-
 
 async def _classify_intent(message: str, model_id: str, client) -> str:
     try:
@@ -76,7 +57,6 @@ async def _classify_intent(message: str, model_id: str, client) -> str:
         logger.warning("Intent classification failed, defaulting to INVESTIGATE: %s", exc)
         return "INVESTIGATE"
 
-
 async def _load_history(db: AsyncSession, user_id) -> list[dict]:
     result = await db.execute(
         select(ChatMessage)
@@ -87,12 +67,10 @@ async def _load_history(db: AsyncSession, user_id) -> list[dict]:
     rows = list(reversed(result.scalars().all()))
     return [{"role": r.role, "content": r.content} for r in rows]
 
-
 async def _save_exchange(db: AsyncSession, user_id, question: str, answer: str) -> None:
     db.add(ChatMessage(user_id=user_id, role="user", content=question))
     db.add(ChatMessage(user_id=user_id, role="assistant", content=answer))
     await db.flush()
-
 
 async def _answer_with_analytics(db: AsyncSession, message: str) -> ChatResponse:
     message_lower = message.lower()
@@ -149,7 +127,6 @@ async def _answer_with_analytics(db: AsyncSession, message: str) -> ChatResponse
     ]
     return ChatResponse(answer=answer, data=sources)
 
-
 async def _answer_with_investigator(message: str, history: list[dict]) -> ChatResponse:
     from app.core.config import settings
 
@@ -171,16 +148,13 @@ async def _answer_with_investigator(message: str, history: list[dict]) -> ChatRe
 
     return ChatResponse(answer=result.get("answer", ""), data=None)
 
-
 @router.get("/history", response_model=ChatHistoryResponse)
 async def get_chat_history(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ChatHistoryResponse:
-    """Return the last 20 chat messages for the current user."""
     history = await _load_history(db, user.id)
     return ChatHistoryResponse(messages=[HistoryMessage(**h) for h in history])
-
 
 @router.post("/", response_model=ChatResponse)
 async def chat(
@@ -188,11 +162,10 @@ async def chat(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ChatResponse:
-    """Classify the question, then answer via SQL count or the Investigator Agent."""
     import boto3
 
     from app.core.config import settings
-    from app.services.bedrock_client import _apply_bedrock_api_key, _bedrock_boto3_kwargs  # noqa: PLC0415
+    from app.services.bedrock_client import _apply_bedrock_api_key, _bedrock_boto3_kwargs
 
     client = boto3.client(
         "bedrock-runtime",

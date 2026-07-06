@@ -11,9 +11,7 @@ _PATTERNS = [
     (re.compile(r'(?i)-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+PRIVATE KEY-----'), '[PRIVATE_KEY_REDACTED]'),
 ]
 
-
 def scrub(text: str) -> str:
-    """Redact secrets from log text before sending to the browser."""
     result = text
     for pattern, replacement in _PATTERNS:
         result = pattern.sub(replacement, result)

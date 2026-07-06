@@ -17,12 +17,6 @@ async def get_analytics(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Return aggregate pipeline statistics.
-
-    Response shape matches the frontend ``AnalyticsData`` contract: ``success_rate``
-    and ``failure_rate`` are fractions in [0, 1], ``top_failing_repos`` is a list of
-    ``{repo, count}``, and ``run_trend`` is a daily series over the last 30 days.
-    """
     total_runs = (
         await db.execute(select(func.count()).select_from(WorkflowRun))
     ).scalar_one() or 0
@@ -70,9 +64,6 @@ async def get_analytics(
         for row in trend_result.all()
     ]
 
-    # A fix is "raised" once a PR has been opened for it. The Remediation
-    # status enum is pending|analyzing|analyzed|pr_raised|helpful|failed —
-    # there is no "completed", so the old check always returned 0.
     remediations_raised = (
         await db.execute(
             select(func.count())
@@ -81,10 +72,6 @@ async def get_analytics(
         )
     ).scalar_one() or 0
 
-    # Real "time to fix suggestion": how long from a remediation being created
-    # (failure detected) to analysis completing. updated_at is bumped when the
-    # agent finishes and sets status=analyzed, so this is a genuine, populated
-    # latency — no more hardcoded "~5m".
     epoch = func.extract("epoch", Remediation.updated_at - Remediation.created_at)
     avg_analysis_seconds = (
         await db.execute(
@@ -95,8 +82,6 @@ async def get_analytics(
     ).scalar_one()
     avg_analysis_seconds = round(float(avg_analysis_seconds)) if avg_analysis_seconds is not None else None
 
-    # True time-to-PR, only for remediations whose PR was actually raised.
-    # Null (shown as "—") until at least one PR is opened, which is honest.
     epoch_pr = func.extract("epoch", Remediation.pr_raised_at - Remediation.created_at)
     avg_time_to_pr_seconds = (
         await db.execute(
@@ -105,9 +90,6 @@ async def get_analytics(
     ).scalar_one()
     avg_time_to_pr_seconds = round(float(avg_time_to_pr_seconds)) if avg_time_to_pr_seconds is not None else None
 
-    # Honest run breakdown: success + failure + other = completed runs. The
-    # frontend can render a real three-way split instead of two rates that
-    # look broken because they don't add to 100.
     completed_runs = (
         await db.execute(
             select(func.count()).select_from(WorkflowRun).where(WorkflowRun.conclusion.is_not(None))

@@ -3,16 +3,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-
 class WorkflowTemplateBase(BaseModel):
     name: str
     description: str | None = None
     template_yaml: str
 
-
 class WorkflowTemplateCreate(WorkflowTemplateBase):
     pass
-
 
 class WorkflowTemplateResponse(WorkflowTemplateBase):
     model_config = ConfigDict(from_attributes=True)
@@ -23,10 +20,8 @@ class WorkflowTemplateResponse(WorkflowTemplateBase):
     created_at: datetime
     updated_at: datetime
 
-
 class WorkflowTemplateList(BaseModel):
     templates: list[WorkflowTemplateResponse]
-
 
 class TemplateDiffResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -40,10 +35,8 @@ class TemplateDiffResponse(BaseModel):
     adoption_score: int
     computed_at: datetime
 
-
 class TemplateDiffList(BaseModel):
     diffs: list[TemplateDiffResponse]
-
 
 class PatternClusterResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -56,10 +49,8 @@ class PatternClusterResponse(BaseModel):
     example_workflow_files: list[str]
     computed_at: datetime
 
-
 class PatternClusterList(BaseModel):
     patterns: list[PatternClusterResponse]
-
 
 class StandardizationAnalyzeRequest(BaseModel):
     ref: str = "main"

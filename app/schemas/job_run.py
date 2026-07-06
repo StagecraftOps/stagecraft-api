@@ -3,7 +3,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-
 class JobRunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -20,10 +19,8 @@ class JobRunResponse(BaseModel):
     runner_labels: list[str] | None = None
     runner_group_name: str | None = None
 
-
 class JobRunList(BaseModel):
     jobs: list[JobRunResponse]
-
 
 class CriticalPathResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -35,13 +32,11 @@ class CriticalPathResponse(BaseModel):
     longest_job_id: uuid.UUID | None = None
     computed_at: datetime
 
-
 class LongestJobEntry(BaseModel):
     job_name: str
     repo_name: str
     workflow_run_id: uuid.UUID
     duration_seconds: int
-
 
 class LongestWorkflowEntry(BaseModel):
     workflow_name: str
@@ -49,10 +44,8 @@ class LongestWorkflowEntry(BaseModel):
     workflow_run_id: uuid.UUID
     duration_seconds: int
 
-
 class RunnerBreakdownEntry(BaseModel):
-    # None means no runner was ever assigned (job still queued or cancelled
-    # before pickup) -- a real, distinct bucket, not missing data.
+
     runner_labels: list[str] | None
     job_count: int
     avg_duration_seconds: float | None

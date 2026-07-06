@@ -3,12 +3,10 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-
 class OrganizationBase(BaseModel):
     login: str
     name: str | None = None
     avatar_url: str | None = None
-
 
 class OrganizationResponse(OrganizationBase):
     model_config = ConfigDict(from_attributes=True)
@@ -19,7 +17,6 @@ class OrganizationResponse(OrganizationBase):
     sync_status: str
     owner_id: uuid.UUID
     created_at: datetime
-
 
 class OrganizationList(BaseModel):
     organizations: list[OrganizationResponse]

@@ -3,7 +3,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-
 class UserBase(BaseModel):
     github_id: int
     login: str
@@ -11,17 +10,14 @@ class UserBase(BaseModel):
     avatar_url: str
     email: str | None = None
 
-
 class UserCreate(UserBase):
     access_token_encrypted: str
-
 
 class UserUpdate(BaseModel):
     name: str | None = None
     avatar_url: str | None = None
     email: str | None = None
     access_token_encrypted: str | None = None
-
 
 class UserResponse(UserBase):
     model_config = ConfigDict(from_attributes=True)
@@ -30,9 +26,7 @@ class UserResponse(UserBase):
     created_at: datetime
     updated_at: datetime
 
-
 class UserMe(BaseModel):
-    """Slim public profile returned from /auth/me."""
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID

@@ -11,6 +11,7 @@ class PRReviewResponse(BaseModel):
     repo_name: str
     pr_number: int
     pr_url: str
+    author: str | None = None
     risk_score: int | None = None
     findings: list[str] | None = None
     review_summary: str | None = None

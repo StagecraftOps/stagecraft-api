@@ -11,6 +11,16 @@ from app.schemas.job_run import LongestJobEntry, LongestWorkflowEntry
 
 router = APIRouter()
 
+# A 'cancelled' job/run's duration is (completed_at - started_at) same as any
+# other, but for a run stuck queued waiting on a runner, that number measures
+# queue time, not compute time -- verified live, a matrix-heavy workflow in
+# this org queued for 24-55h before GitHub's own queued-job timeout cancelled
+# it, dwarfing every genuine (a few minutes) duration and making the whole
+# "longest running" ranking pure noise. Excluded from both queries below;
+# 'failure' is kept, since a test that ran for 10 real minutes before failing
+# is still a genuine duration worth ranking.
+_EXCLUDED_CONCLUSIONS = ("cancelled",)
+
 
 @router.get("/{org_login}/performance/longest-jobs", response_model=list[LongestJobEntry])
 async def longest_jobs(
@@ -23,7 +33,11 @@ async def longest_jobs(
     result = await db.execute(
         select(JobRun, WorkflowRun.repo_name)
         .join(WorkflowRun, WorkflowRun.id == JobRun.workflow_run_id)
-        .where(WorkflowRun.org_login == org_login, JobRun.duration_seconds.is_not(None))
+        .where(
+            WorkflowRun.org_login == org_login,
+            JobRun.duration_seconds.is_not(None),
+            JobRun.conclusion.not_in(_EXCLUDED_CONCLUSIONS),
+        )
         .order_by(JobRun.duration_seconds.desc())
         .limit(limit)
     )
@@ -52,6 +66,7 @@ async def longest_workflows(
             WorkflowRun.org_login == org_login,
             WorkflowRun.started_at.is_not(None),
             WorkflowRun.completed_at.is_not(None),
+            WorkflowRun.conclusion.not_in(_EXCLUDED_CONCLUSIONS),
         )
     )
     runs = result.scalars().all()

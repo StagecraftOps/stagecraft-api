@@ -141,7 +141,7 @@ async def github_callback(
     jwt_token = create_access_token({"sub": str(user.id), "login": user.login})
 
     redirect = RedirectResponse(
-        url=f"{settings.FRONTEND_URL}/dashboard",
+        url=f"{settings.FRONTEND_URL}/analytics",
         status_code=status.HTTP_302_FOUND,
     )
     redirect.set_cookie(

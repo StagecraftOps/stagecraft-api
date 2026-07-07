@@ -14,11 +14,14 @@ from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.security import create_access_token, decrypt_token, encrypt_token
 from app.db.base import get_db
+from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.user import UserMe
+from app.services.sqs_publisher import SQSPublisher
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+_publisher = SQSPublisher()
 
 GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
@@ -120,6 +123,20 @@ async def github_callback(
 
     await db.commit()
     await db.refresh(user)
+
+    claimed_result = await db.execute(
+        select(Organization).where(
+            Organization.installed_by_github_id == user.github_id,
+            Organization.owner_id.is_(None),
+        )
+    )
+    unclaimed_orgs = claimed_result.scalars().all()
+    for org in unclaimed_orgs:
+        org.owner_id = user.id
+    if unclaimed_orgs:
+        await db.commit()
+        for org in unclaimed_orgs:
+            await _publisher.publish({"event_type": "backfill_org", "org_login": org.login})
 
     jwt_token = create_access_token({"sub": str(user.id), "login": user.login})
 

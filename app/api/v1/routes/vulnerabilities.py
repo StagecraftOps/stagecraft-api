@@ -92,3 +92,18 @@ async def publish_vulnerability_agent(
         "repo_name": body.repo_name,
     })
     return {"status": "enqueued", "org_login": body.org_login, "repo_name": body.repo_name}
+
+@router.post("/remediation/run-agentic")
+async def run_agentic_remediation(
+    body: RemediationTriggerRequest,
+    _user: User = Depends(get_current_user),
+) -> dict:
+    """Trigger the deployed agentic remediation workflow (real Claude Code via
+    claude-code-action): builds a brief from open findings + Application
+    Context + skill files, commits it, and dispatches the workflow."""
+    await _publisher.publish({
+        "event_type": "run_agentic_remediation",
+        "org_login": body.org_login,
+        "repo_name": body.repo_name,
+    })
+    return {"status": "enqueued", "org_login": body.org_login, "repo_name": body.repo_name}

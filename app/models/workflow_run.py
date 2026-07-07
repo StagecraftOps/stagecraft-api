@@ -17,6 +17,7 @@ class WorkflowRun(Base):
     github_workflow_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     org_login: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     repo_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    application_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     workflow_name: Mapped[str] = mapped_column(String(512), nullable=False)
     workflow_file: Mapped[str] = mapped_column(String(512), nullable=False)
     branch: Mapped[str] = mapped_column(String(512), nullable=False)

@@ -13,6 +13,7 @@ class PRReview(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_login: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     repo_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    application_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     pr_number: Mapped[int] = mapped_column(Integer, nullable=False)
     pr_url: Mapped[str] = mapped_column(String(1024), nullable=False, server_default="")
     author: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)

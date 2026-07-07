@@ -1,6 +1,7 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,31 +18,37 @@ _TREND_DAYS = 30
 
 @router.get("/")
 async def get_analytics(
+    application_id: uuid.UUID | None = Query(default=None),
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    # When an application is selected, every metric is scoped to its rows.
+    wf_app = [WorkflowRun.application_id == application_id] if application_id else []
+    rem_app = [Remediation.application_id == application_id] if application_id else []
+    vuln_app = [VulnerabilityFinding.application_id == application_id] if application_id else []
+
     # Total = every ingested run (incl. in-progress / queued, which have NULL conclusion).
     total_runs = (
-        await db.execute(select(func.count()).select_from(WorkflowRun))
+        await db.execute(select(func.count()).select_from(WorkflowRun).where(*wf_app))
     ).scalar_one() or 0
 
     # Completed = finished runs only (conclusion is set). All rate math uses THIS as the
     # denominator so in-progress / queued runs never dilute failure/success rates.
     completed_runs = (
         await db.execute(
-            select(func.count()).select_from(WorkflowRun).where(WorkflowRun.conclusion.is_not(None))
+            select(func.count()).select_from(WorkflowRun).where(WorkflowRun.conclusion.is_not(None), *wf_app)
         )
     ).scalar_one() or 0
 
     failed_runs = (
         await db.execute(
-            select(func.count()).select_from(WorkflowRun).where(WorkflowRun.conclusion == "failure")
+            select(func.count()).select_from(WorkflowRun).where(WorkflowRun.conclusion == "failure", *wf_app)
         )
     ).scalar_one() or 0
 
     success_runs = (
         await db.execute(
-            select(func.count()).select_from(WorkflowRun).where(WorkflowRun.conclusion == "success")
+            select(func.count()).select_from(WorkflowRun).where(WorkflowRun.conclusion == "success", *wf_app)
         )
     ).scalar_one() or 0
 
@@ -54,7 +61,7 @@ async def get_analytics(
     # Top failing repos.
     top_failing_result = await db.execute(
         select(WorkflowRun.repo_name, func.count().label("count"))
-        .where(WorkflowRun.conclusion == "failure")
+        .where(WorkflowRun.conclusion == "failure", *wf_app)
         .group_by(WorkflowRun.repo_name)
         .order_by(func.count().desc())
         .limit(5)
@@ -66,7 +73,7 @@ async def get_analytics(
     # Top failing workflows.
     top_failing_wf_result = await db.execute(
         select(WorkflowRun.workflow_name, func.count().label("count"))
-        .where(WorkflowRun.conclusion == "failure")
+        .where(WorkflowRun.conclusion == "failure", *wf_app)
         .group_by(WorkflowRun.workflow_name)
         .order_by(func.count().desc())
         .limit(5)
@@ -84,7 +91,7 @@ async def get_analytics(
             func.sum(case((WorkflowRun.conclusion == "success", 1), else_=0)).label("success"),
             func.sum(case((WorkflowRun.conclusion == "failure", 1), else_=0)).label("failed"),
         )
-        .where(WorkflowRun.created_at >= since)
+        .where(WorkflowRun.created_at >= since, *wf_app)
         .group_by(day)
         .order_by(day)
     )
@@ -98,7 +105,7 @@ async def get_analytics(
         await db.execute(
             select(func.count())
             .select_from(WorkflowRun)
-            .where(WorkflowRun.conclusion.is_not(None), WorkflowRun.created_at >= since)
+            .where(WorkflowRun.conclusion.is_not(None), WorkflowRun.created_at >= since, *wf_app)
         )
     ).scalar_one() or 0
     runs_per_day = round(completed_in_window / _TREND_DAYS, 2)
@@ -106,7 +113,7 @@ async def get_analytics(
     # A raised PR = a remediation that actually produced a PR URL (not merely "helpful").
     remediations_raised = (
         await db.execute(
-            select(func.count()).select_from(Remediation).where(Remediation.pr_url.is_not(None))
+            select(func.count()).select_from(Remediation).where(Remediation.pr_url.is_not(None), *rem_app)
         )
     ).scalar_one() or 0
 
@@ -115,7 +122,7 @@ async def get_analytics(
     avg_analysis_seconds = (
         await db.execute(
             select(func.avg(epoch)).where(
-                Remediation.status.in_(["analyzed", "pr_raised", "helpful"])
+                Remediation.status.in_(["analyzed", "pr_raised", "helpful"]), *rem_app
             )
         )
     ).scalar_one()
@@ -125,7 +132,7 @@ async def get_analytics(
     epoch_pr = func.extract("epoch", Remediation.pr_raised_at - Remediation.created_at)
     avg_time_to_pr_seconds = (
         await db.execute(
-            select(func.avg(epoch_pr)).where(Remediation.pr_raised_at.is_not(None))
+            select(func.avg(epoch_pr)).where(Remediation.pr_raised_at.is_not(None), *rem_app)
         )
     ).scalar_one()
     avg_time_to_pr_seconds = round(float(avg_time_to_pr_seconds)) if avg_time_to_pr_seconds is not None else None
@@ -138,7 +145,7 @@ async def get_analytics(
             select(func.avg(mttr_epoch))
             .select_from(Remediation)
             .join(WorkflowRun, Remediation.workflow_run_id == WorkflowRun.id)
-            .where(Remediation.pr_raised_at.is_not(None), WorkflowRun.completed_at.is_not(None))
+            .where(Remediation.pr_raised_at.is_not(None), WorkflowRun.completed_at.is_not(None), *rem_app)
         )
     ).scalar_one()
     mttr_seconds = round(float(mttr_seconds)) if mttr_seconds is not None else None
@@ -150,7 +157,7 @@ async def get_analytics(
             select(func.avg(mttd_epoch))
             .select_from(Remediation)
             .join(WorkflowRun, Remediation.workflow_run_id == WorkflowRun.id)
-            .where(WorkflowRun.completed_at.is_not(None))
+            .where(WorkflowRun.completed_at.is_not(None), *rem_app)
         )
     ).scalar_one()
     mttd_seconds = round(float(mttd_seconds)) if mttd_seconds is not None else None
@@ -159,7 +166,7 @@ async def get_analytics(
     sev = func.coalesce(VulnerabilityFinding.severity_in_context, VulnerabilityFinding.severity)
     vuln_rows = await db.execute(
         select(sev.label("sev"), func.count().label("count"))
-        .where(VulnerabilityFinding.status == "open")
+        .where(VulnerabilityFinding.status == "open", *vuln_app)
         .group_by(sev)
     )
     open_vulns_by_severity: dict[str, int] = {}

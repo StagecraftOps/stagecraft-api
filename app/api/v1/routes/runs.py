@@ -28,6 +28,7 @@ async def _visible_org_logins(db: AsyncSession) -> list[str]:
 async def list_recent_runs(
     org_login: str | None = Query(default=None, max_length=255),
     repo_name: str | None = Query(default=None, max_length=255),
+    application_id: uuid.UUID | None = Query(default=None),
     run_status: str | None = Query(default=None, alias="status", max_length=64),
     conclusion: str | None = Query(default=None, max_length=64),
     limit: int = Query(default=20, ge=1, le=100),
@@ -53,6 +54,9 @@ async def list_recent_runs(
     if repo_name:
         query = query.where(WorkflowRun.repo_name == repo_name)
         count_query = count_query.where(WorkflowRun.repo_name == repo_name)
+    if application_id:
+        query = query.where(WorkflowRun.application_id == application_id)
+        count_query = count_query.where(WorkflowRun.application_id == application_id)
     if run_status:
         query = query.where(WorkflowRun.status == run_status)
         count_query = count_query.where(WorkflowRun.status == run_status)

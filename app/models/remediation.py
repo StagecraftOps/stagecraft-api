@@ -20,6 +20,7 @@ class Remediation(Base):
     )
     org_login: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     repo_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    application_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     workflow_file: Mapped[str] = mapped_column(String(512), nullable=False)
     failure_category: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     root_cause: Mapped[str] = mapped_column(Text, nullable=False)

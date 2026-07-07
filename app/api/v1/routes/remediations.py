@@ -24,6 +24,7 @@ router = APIRouter()
 async def list_remediations(
     org_login: str | None = Query(default=None, max_length=255),
     repo_name: str | None = Query(default=None, max_length=255),
+    application_id: uuid.UUID | None = Query(default=None),
     remediation_status: str | None = Query(default=None, alias="status", max_length=64),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -39,6 +40,9 @@ async def list_remediations(
     if repo_name:
         query = query.where(Remediation.repo_name == repo_name)
         count_query = count_query.where(Remediation.repo_name == repo_name)
+    if application_id:
+        query = query.where(Remediation.application_id == application_id)
+        count_query = count_query.where(Remediation.application_id == application_id)
     if remediation_status:
         query = query.where(Remediation.status == remediation_status)
         count_query = count_query.where(Remediation.status == remediation_status)

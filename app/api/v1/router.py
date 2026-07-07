@@ -4,6 +4,7 @@ from app.api.v1.routes import (
     agent_runs,
     analytics,
     application_contexts,
+    applications,
     audit,
     auth,
     chat,
@@ -24,6 +25,7 @@ api_router = APIRouter()
 
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(orgs.router, prefix="/orgs", tags=["organizations"])
+api_router.include_router(applications.router, prefix="/orgs", tags=["applications"])
 api_router.include_router(dependency_graph.router, prefix="/orgs", tags=["dependency-graph"])
 api_router.include_router(performance.router, prefix="/orgs", tags=["performance"])
 api_router.include_router(standardization.router, prefix="/orgs", tags=["standardization"])

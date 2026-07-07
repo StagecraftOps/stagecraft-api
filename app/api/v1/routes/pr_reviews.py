@@ -16,6 +16,7 @@ router = APIRouter()
 async def list_pr_reviews(
     org_login: str | None = Query(default=None, max_length=255),
     repo_name: str | None = Query(default=None, max_length=255),
+    application_id: uuid.UUID | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     _user: User = Depends(get_current_user),
@@ -30,6 +31,9 @@ async def list_pr_reviews(
     if repo_name:
         query = query.where(PRReview.repo_name == repo_name)
         count_query = count_query.where(PRReview.repo_name == repo_name)
+    if application_id:
+        query = query.where(PRReview.application_id == application_id)
+        count_query = count_query.where(PRReview.application_id == application_id)
 
     total = (await db.execute(count_query)).scalar_one()
     offset = (page - 1) * page_size

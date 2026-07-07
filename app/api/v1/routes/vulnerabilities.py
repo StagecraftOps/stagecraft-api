@@ -16,6 +16,7 @@ router = APIRouter()
 async def list_vulnerability_findings(
     org_login: str | None = Query(default=None, max_length=255),
     repo_name: str | None = Query(default=None, max_length=255),
+    application_id: uuid.UUID | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status", max_length=32),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -28,6 +29,7 @@ async def list_vulnerability_findings(
     for column, value in (
         (VulnerabilityFinding.org_login, org_login),
         (VulnerabilityFinding.repo_name, repo_name),
+        (VulnerabilityFinding.application_id, application_id),
         (VulnerabilityFinding.status, status_filter),
     ):
         if value:

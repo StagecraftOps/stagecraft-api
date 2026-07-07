@@ -14,6 +14,7 @@ class ApplicationContext(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_login: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     repo_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    application_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     app_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     language: Mapped[str | None] = mapped_column(String(128), nullable=True)
     framework: Mapped[str | None] = mapped_column(String(128), nullable=True)

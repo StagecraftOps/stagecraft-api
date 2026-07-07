@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,8 +10,14 @@ from app.db.base import get_db
 from app.models.user import User
 from app.models.vulnerability_finding import VulnerabilityFinding
 from app.schemas.vulnerability_finding import VulnerabilityFindingList, VulnerabilityFindingResponse
+from app.services.sqs_publisher import SQSPublisher
 
 router = APIRouter()
+_publisher = SQSPublisher()
+
+class RemediationTriggerRequest(BaseModel):
+    org_login: str
+    repo_name: str
 
 @router.get("/", response_model=VulnerabilityFindingList)
 async def list_vulnerability_findings(
@@ -57,3 +64,31 @@ async def get_vulnerability_finding(
     if not finding:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vulnerability finding not found")
     return VulnerabilityFindingResponse.model_validate(finding)
+
+@router.post("/remediation/run")
+async def run_dependency_fix(
+    body: RemediationTriggerRequest,
+    _user: User = Depends(get_current_user),
+) -> dict:
+    """Trigger the Vulnerability Remediation (Custom) agent: dependency-ordered
+    fix PR for a repo's open, fixable findings."""
+    await _publisher.publish({
+        "event_type": "run_vulnerability_dependency_fix",
+        "org_login": body.org_login,
+        "repo_name": body.repo_name,
+    })
+    return {"status": "enqueued", "org_login": body.org_login, "repo_name": body.repo_name}
+
+@router.post("/remediation/publish")
+async def publish_vulnerability_agent(
+    body: RemediationTriggerRequest,
+    _user: User = Depends(get_current_user),
+) -> dict:
+    """Deploy the Vulnerability Remediation agent's scanning workflow into a
+    repo via a PR, so it starts feeding real findings to the RCA agent."""
+    await _publisher.publish({
+        "event_type": "publish_vulnerability_agent",
+        "org_login": body.org_login,
+        "repo_name": body.repo_name,
+    })
+    return {"status": "enqueued", "org_login": body.org_login, "repo_name": body.repo_name}

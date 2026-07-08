@@ -11,6 +11,7 @@ from app.api.v1.routes import (
     custom_agents,
     dependency_graph,
     governance,
+    insights,
     optimization,
     orgs,
     performance,
@@ -43,3 +44,4 @@ api_router.include_router(agent_runs.router, prefix="/agent-runs", tags=["agent-
 api_router.include_router(application_contexts.router, prefix="/application-contexts", tags=["application-contexts"])
 api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
 api_router.include_router(vulnerabilities.router, prefix="/vulnerabilities", tags=["vulnerabilities"])
+api_router.include_router(insights.router, prefix="/insights", tags=["insights"])

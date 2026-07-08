@@ -107,3 +107,18 @@ async def run_agentic_remediation(
         "repo_name": body.repo_name,
     })
     return {"status": "enqueued", "org_login": body.org_login, "repo_name": body.repo_name}
+
+@router.post("/remediation/run-copilot")
+async def run_copilot_remediation(
+    body: RemediationTriggerRequest,
+    _user: User = Depends(get_current_user),
+) -> dict:
+    """Trigger GitHub Copilot's coding agent (Agent Tasks REST API) to open a
+    dependency-ordered fix PR -- no workflow needs to be deployed into the
+    repo first, unlike the claude-code-action path."""
+    await _publisher.publish({
+        "event_type": "run_copilot_remediation",
+        "org_login": body.org_login,
+        "repo_name": body.repo_name,
+    })
+    return {"status": "enqueued", "org_login": body.org_login, "repo_name": body.repo_name}

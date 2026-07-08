@@ -22,12 +22,12 @@ _PROMPT = """You are looking at live operational metrics for a CI/CD platform, f
 Metrics:
 {metrics}
 
-Give exactly ONE specific, actionable recommendation for the single most important thing to look into or fix right now, based only on these numbers. Requirements:
-- 1-2 sentences, plain text, no markdown, no emojis, no bullet points.
+Give the single most important thing to look into or fix right now, based only on these numbers. Requirements:
+- ONE short sentence. Under 18 words. Plain text, no markdown, no emojis.
 - Reference the actual numbers/names from the metrics above, not generic advice.
-- If the metrics show nothing concerning (e.g. everything at zero or healthy), say so plainly instead of inventing a problem.
+- If nothing is concerning, say so in a few words instead of inventing a problem.
 
-Respond with only the recommendation text, nothing else."""
+Respond with only that one sentence, nothing else."""
 
 @router.post("/suggest", response_model=SuggestResponse)
 async def suggest(
@@ -50,7 +50,7 @@ async def suggest(
         resp = client.converse(
             modelId=settings.BEDROCK_CHAT_MODEL_ID,
             messages=[{"role": "user", "content": [{"text": prompt}]}],
-            inferenceConfig={"maxTokens": 150, "temperature": 0.2},
+            inferenceConfig={"maxTokens": 60, "temperature": 0.2},
         )
         text = resp["output"]["message"]["content"][0]["text"].strip()
         return SuggestResponse(suggestion=text or None)

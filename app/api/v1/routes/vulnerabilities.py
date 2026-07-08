@@ -18,6 +18,7 @@ _publisher = SQSPublisher()
 class RemediationTriggerRequest(BaseModel):
     org_login: str
     repo_name: str
+    finding_id: str | None = None
 
 @router.get("/", response_model=VulnerabilityFindingList)
 async def list_vulnerability_findings(
@@ -100,11 +101,16 @@ async def run_agentic_remediation(
 ) -> dict:
     """Trigger the deployed agentic remediation workflow (real Claude Code via
     claude-code-action): builds a brief from open findings + Application
-    Context + skill files, commits it, and dispatches the workflow."""
+    Context + skill files, commits it, and dispatches the workflow.
+
+    If finding_id is set, the brief is scoped to that single finding instead
+    of every open finding in the repo -- used by the per-finding "Deploy to
+    repository" action."""
     await _publisher.publish({
         "event_type": "run_agentic_remediation",
         "org_login": body.org_login,
         "repo_name": body.repo_name,
+        "finding_id": body.finding_id,
     })
     return {"status": "enqueued", "org_login": body.org_login, "repo_name": body.repo_name}
 

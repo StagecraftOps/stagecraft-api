@@ -17,6 +17,7 @@ class OptimizationRecommendation(Base):
     graph_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("graphs.id", ondelete="CASCADE"), nullable=False)
     recommendation_type: Mapped[str] = mapped_column(String(32), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    original_yaml: Mapped[str | None] = mapped_column(Text, nullable=True)
     proposed_yaml_diff: Mapped[str | None] = mapped_column(Text, nullable=True)
     estimated_time_savings_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     confidence_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

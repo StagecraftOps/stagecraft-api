@@ -13,6 +13,7 @@ class OptimizationRecommendationResponse(BaseModel):
     graph_id: uuid.UUID
     recommendation_type: str
     description: str
+    original_yaml: str | None = None
     proposed_yaml_diff: str | None = None
     estimated_time_savings_seconds: int
     confidence_score: int
@@ -23,7 +24,6 @@ class OptimizationRecommendationResponse(BaseModel):
     agent_trace: list[str] | None = None
     created_at: datetime
     updated_at: datetime
-    current_yaml: str | None = None
 
 class OptimizationRecommendationList(BaseModel):
     recommendations: list[OptimizationRecommendationResponse]

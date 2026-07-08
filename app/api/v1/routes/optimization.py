@@ -66,32 +66,35 @@ async def list_recommendations(
 
     responses = [OptimizationRecommendationResponse.model_validate(r) for r in recs]
 
-    graph_ids = {r.graph_id for r in recs}
-    graphs: dict[uuid.UUID, Graph] = {}
-    if graph_ids:
+    # original_yaml is normally captured at analysis time (see optimization.py's
+    # worker task) and returned as-is above via model_validate. This fallback only
+    # covers recommendations created before that snapshot existed -- best-effort,
+    # and may not match what the LLM actually saw if the file has since drifted.
+    stale_recs = [(rec, response) for rec, response in zip(recs, responses) if not rec.original_yaml]
+    if stale_recs:
+        graph_ids = {rec.graph_id for rec, _ in stale_recs}
         graph_result = await db.execute(select(Graph).where(Graph.id.in_(graph_ids)))
-        graphs = {g.id: g for g in graph_result.scalars().all()}
+        graphs: dict[uuid.UUID, Graph] = {g.id: g for g in graph_result.scalars().all()}
 
-    if recs:
         try:
             token = await _get_github_token(org_login, user)
         except Exception as exc:
-            logger.warning("Could not obtain GitHub token for current_yaml fetch: %s", exc)
+            logger.warning("Could not obtain GitHub token for original_yaml fallback fetch: %s", exc)
             token = None
 
         if token:
             github = GitHubService(token)
             try:
-                for rec, response in zip(recs, responses):
+                for rec, response in stale_recs:
                     graph = graphs.get(rec.graph_id)
                     ref = graph.ref if graph and graph.ref else "main"
                     try:
-                        response.current_yaml = await github.get_workflow_file(
+                        response.original_yaml = await github.get_workflow_file(
                             org_login, repo_name, rec.workflow_file, ref
                         )
                     except Exception as exc:
                         logger.warning(
-                            "Could not fetch current_yaml for recommendation %s: %s", rec.id, exc
+                            "Could not fetch fallback original_yaml for recommendation %s: %s", rec.id, exc
                         )
             finally:
                 await github.aclose()
@@ -140,10 +143,21 @@ async def accept_recommendation(
     github = GitHubService(token)
     fix_branch = f"stagecraft/optimize-{str(rec.id)[:8]}"
     try:
+        current_sha = await github.get_file_sha(rec.org_login, rec.repo_name, rec.workflow_file, base_ref)
+
+        if rec.original_yaml is not None:
+            live_content = await github.get_workflow_file(rec.org_login, rec.repo_name, rec.workflow_file, base_ref)
+            if live_content != rec.original_yaml:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"{rec.workflow_file} has changed since this recommendation was analyzed. "
+                        "Re-run Analyze to get an up-to-date suggestion before accepting."
+                    ),
+                )
+
         base_sha = await github.get_branch_head_sha(rec.org_login, rec.repo_name, base_ref)
         await github.create_fix_branch(rec.org_login, rec.repo_name, base_sha, fix_branch)
-
-        current_sha = await github.get_file_sha(rec.org_login, rec.repo_name, rec.workflow_file, base_ref)
 
         await github.commit_fix(
             owner=rec.org_login,
@@ -183,6 +197,8 @@ async def accept_recommendation(
         await db.refresh(rec)
         return OptimizationRecommendationResponse.model_validate(rec)
 
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Failed to raise PR for optimization recommendation %s: %s", recommendation_id, exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to create PR on GitHub.")

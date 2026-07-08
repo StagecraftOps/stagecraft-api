@@ -17,9 +17,13 @@ class OptimizationRecommendationResponse(BaseModel):
     estimated_time_savings_seconds: int
     confidence_score: int
     status: str
+    pr_url: str | None = None
+    pr_number: int | None = None
+    pr_branch: str | None = None
     agent_trace: list[str] | None = None
     created_at: datetime
     updated_at: datetime
+    current_yaml: str | None = None
 
 class OptimizationRecommendationList(BaseModel):
     recommendations: list[OptimizationRecommendationResponse]

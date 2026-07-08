@@ -153,6 +153,10 @@ class GitHubService:
                 return None
             raise
 
+    async def get_branch_head_sha(self, owner: str, repo: str, branch: str) -> str:
+        data = await self._get(f"/repos/{owner}/{repo}/git/ref/heads/{branch}")
+        return data["object"]["sha"]
+
     async def create_fix_branch(self, owner: str, repo: str, base_sha: str, branch_name: str) -> None:
         try:
             await self._post(

@@ -21,6 +21,9 @@ class OptimizationRecommendation(Base):
     estimated_time_savings_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     confidence_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="proposed")
+    pr_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    pr_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pr_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
     agent_trace: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
